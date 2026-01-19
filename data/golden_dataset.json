@@ -1,0 +1,328 @@
+{
+  "metadata": {
+    "version": "1.0",
+    "created": "2026-01-12",
+    "description": "Golden dataset for plant health evaluation system. Each example is human-verified.",
+    "total_examples": 15
+  },
+  "examples": [
+    {
+      "id": "healthy_001",
+      "category": "healthy",
+      "description": "Ideal conditions - all metrics within target range",
+      "input": {
+        "plant_type": "Pothos",
+        "metrics": {
+          "soil_moisture": { "value": 45, "target": 40, "unit": "%" },
+          "light": { "value": 800, "target": 750, "unit": "lux" },
+          "temperature": { "value": 72, "target": 70, "unit": "°F" },
+          "humidity": { "value": 55, "target": 50, "unit": "%" }
+        }
+      },
+      "expected": {
+        "health_classification": "healthy",
+        "urgency": "low",
+        "recommendation_themes": ["maintenance", "continue current care"],
+        "should_not_contain": ["urgent", "immediately", "dying", "emergency"]
+      },
+      "reasoning": "All metrics are within 10% of target. Response should be positive and focus on maintaining current conditions."
+    },
+    {
+      "id": "healthy_002",
+      "category": "healthy",
+      "description": "Slightly below targets but acceptable range",
+      "input": {
+        "plant_type": "Spider Plant",
+        "metrics": {
+          "soil_moisture": { "value": 35, "target": 40, "unit": "%" },
+          "light": { "value": 680, "target": 750, "unit": "lux" },
+          "temperature": { "value": 68, "target": 70, "unit": "°F" },
+          "humidity": { "value": 45, "target": 50, "unit": "%" }
+        }
+      },
+      "expected": {
+        "health_classification": "healthy",
+        "urgency": "low",
+        "recommendation_themes": ["minor adjustments", "monitoring"],
+        "should_not_contain": ["critical", "dying", "severe"]
+      },
+      "reasoning": "Metrics are slightly below target but within acceptable variance. Minor suggestions are appropriate."
+    },
+    {
+      "id": "drought_001",
+      "category": "single_stressor",
+      "description": "Severe drought stress - critically low moisture",
+      "input": {
+        "plant_type": "Peace Lily",
+        "metrics": {
+          "soil_moisture": { "value": 12, "target": 50, "unit": "%" },
+          "light": { "value": 600, "target": 500, "unit": "lux" },
+          "temperature": { "value": 74, "target": 72, "unit": "°F" },
+          "humidity": { "value": 48, "target": 50, "unit": "%" }
+        }
+      },
+      "expected": {
+        "health_classification": "stressed",
+        "urgency": "high",
+        "recommendation_themes": ["water immediately", "check drainage", "monitor recovery"],
+        "should_not_contain": ["reduce watering", "overwatered"]
+      },
+      "reasoning": "Soil moisture at 24% of target is critically low. Peace Lilies are sensitive to drought. Urgent watering recommendation required."
+    },
+    {
+      "id": "drought_002",
+      "category": "single_stressor",
+      "description": "Moderate drought with high temperature compounding stress",
+      "input": {
+        "plant_type": "Fern",
+        "metrics": {
+          "soil_moisture": { "value": 25, "target": 60, "unit": "%" },
+          "light": { "value": 400, "target": 400, "unit": "lux" },
+          "temperature": { "value": 82, "target": 68, "unit": "°F" },
+          "humidity": { "value": 40, "target": 60, "unit": "%" }
+        }
+      },
+      "expected": {
+        "health_classification": "stressed",
+        "urgency": "high",
+        "recommendation_themes": ["water", "move to cooler location", "increase humidity", "misting"],
+        "should_not_contain": ["healthy", "doing well"]
+      },
+      "reasoning": "Low moisture + high temp + low humidity creates compounding stress for a moisture-loving fern. Multiple interventions needed."
+    },
+    {
+      "id": "overwater_001",
+      "category": "single_stressor",
+      "description": "Overwatering with low light - root rot risk",
+      "input": {
+        "plant_type": "Snake Plant",
+        "metrics": {
+          "soil_moisture": { "value": 85, "target": 30, "unit": "%" },
+          "light": { "value": 200, "target": 400, "unit": "lux" },
+          "temperature": { "value": 70, "target": 70, "unit": "°F" },
+          "humidity": { "value": 50, "target": 45, "unit": "%" }
+        }
+      },
+      "expected": {
+        "health_classification": "at_risk",
+        "urgency": "medium",
+        "recommendation_themes": ["stop watering", "improve drainage", "increase light", "check for root rot"],
+        "should_not_contain": ["water more", "increase moisture"]
+      },
+      "reasoning": "Snake plants are drought-tolerant. 85% moisture is dangerously high. Low light slows evaporation, increasing rot risk."
+    },
+    {
+      "id": "overwater_002",
+      "category": "single_stressor",
+      "description": "Slight overwatering - early intervention",
+      "input": {
+        "plant_type": "Pothos",
+        "metrics": {
+          "soil_moisture": { "value": 70, "target": 45, "unit": "%" },
+          "light": { "value": 750, "target": 750, "unit": "lux" },
+          "temperature": { "value": 72, "target": 70, "unit": "°F" },
+          "humidity": { "value": 55, "target": 50, "unit": "%" }
+        }
+      },
+      "expected": {
+        "health_classification": "at_risk",
+        "urgency": "low",
+        "recommendation_themes": ["let soil dry", "reduce watering frequency", "check drainage"],
+        "should_not_contain": ["emergency", "dying", "critical"]
+      },
+      "reasoning": "Moderately overwatered but good light will help. Calm guidance to adjust watering schedule is appropriate."
+    },
+    {
+      "id": "lowlight_001",
+      "category": "single_stressor",
+      "description": "Severe light deficiency",
+      "input": {
+        "plant_type": "Monstera",
+        "metrics": {
+          "soil_moisture": { "value": 42, "target": 45, "unit": "%" },
+          "light": { "value": 100, "target": 800, "unit": "lux" },
+          "temperature": { "value": 71, "target": 72, "unit": "°F" },
+          "humidity": { "value": 52, "target": 55, "unit": "%" }
+        }
+      },
+      "expected": {
+        "health_classification": "stressed",
+        "urgency": "medium",
+        "recommendation_themes": ["move closer to window", "consider grow light", "rotate plant"],
+        "should_not_contain": ["watering", "moisture", "too much light"]
+      },
+      "reasoning": "Light at 12.5% of target is critically low for a Monstera. Other metrics are fine, so focus should be on light."
+    },
+    {
+      "id": "cold_001",
+      "category": "single_stressor",
+      "description": "Temperature too low - tropical plant",
+      "input": {
+        "plant_type": "Fiddle Leaf Fig",
+        "metrics": {
+          "soil_moisture": { "value": 40, "target": 45, "unit": "%" },
+          "light": { "value": 900, "target": 1000, "unit": "lux" },
+          "temperature": { "value": 52, "target": 70, "unit": "°F" },
+          "humidity": { "value": 50, "target": 50, "unit": "%" }
+        }
+      },
+      "expected": {
+        "health_classification": "stressed",
+        "urgency": "high",
+        "recommendation_themes": ["move away from cold draft", "increase temperature", "avoid cold windows"],
+        "should_not_contain": ["too hot", "reduce temperature", "overheating"]
+      },
+      "reasoning": "52°F is dangerously cold for tropical plants. Fiddle Leaf Figs can suffer permanent damage below 55°F."
+    },
+    {
+      "id": "multi_stress_001",
+      "category": "multiple_stressors",
+      "description": "Drought + Heat + Low humidity - desert conditions",
+      "input": {
+        "plant_type": "Calathea",
+        "metrics": {
+          "soil_moisture": { "value": 20, "target": 55, "unit": "%" },
+          "light": { "value": 500, "target": 400, "unit": "lux" },
+          "temperature": { "value": 85, "target": 70, "unit": "°F" },
+          "humidity": { "value": 25, "target": 65, "unit": "%" }
+        }
+      },
+      "expected": {
+        "health_classification": "critical",
+        "urgency": "high",
+        "recommendation_themes": ["water immediately", "move to cooler spot", "increase humidity", "pebble tray", "group with other plants"],
+        "should_not_contain": ["healthy", "minor adjustment", "doing well"]
+      },
+      "reasoning": "Calatheas are humidity-sensitive. This is a crisis scenario with three compounding stressors. Immediate multi-pronged intervention needed."
+    },
+    {
+      "id": "multi_stress_002",
+      "category": "multiple_stressors",
+      "description": "Overwatering + Cold - root rot perfect conditions",
+      "input": {
+        "plant_type": "Rubber Plant",
+        "metrics": {
+          "soil_moisture": { "value": 80, "target": 40, "unit": "%" },
+          "light": { "value": 600, "target": 700, "unit": "lux" },
+          "temperature": { "value": 55, "target": 68, "unit": "°F" },
+          "humidity": { "value": 60, "target": 50, "unit": "%" }
+        }
+      },
+      "expected": {
+        "health_classification": "critical",
+        "urgency": "high",
+        "recommendation_themes": ["stop watering", "move to warmer location", "check roots", "improve drainage", "repot if needed"],
+        "should_not_contain": ["water more", "too dry"]
+      },
+      "reasoning": "Cold + wet soil is the perfect recipe for root rot. Rubber plants need to dry between waterings. Critical intervention needed."
+    },
+    {
+      "id": "edge_001",
+      "category": "edge_case",
+      "description": "Conflicting signals - high moisture but wilting indicators implied",
+      "input": {
+        "plant_type": "Pothos",
+        "metrics": {
+          "soil_moisture": { "value": 75, "target": 45, "unit": "%" },
+          "light": { "value": 300, "target": 750, "unit": "lux" },
+          "temperature": { "value": 70, "target": 70, "unit": "°F" },
+          "humidity": { "value": 50, "target": 50, "unit": "%" }
+        },
+        "additional_context": "User reports leaves are yellowing and drooping"
+      },
+      "expected": {
+        "health_classification": "at_risk",
+        "urgency": "medium",
+        "recommendation_themes": ["possible root rot", "check roots", "reduce watering", "improve drainage", "increase light"],
+        "should_not_contain": ["water more", "needs more moisture"]
+      },
+      "reasoning": "High moisture + yellowing/drooping suggests root rot, not drought. System should recognize this pattern and NOT recommend more water."
+    },
+    {
+      "id": "edge_002",
+      "category": "edge_case",
+      "description": "Borderline values - all metrics at threshold edge",
+      "input": {
+        "plant_type": "ZZ Plant",
+        "metrics": {
+          "soil_moisture": { "value": 25, "target": 25, "unit": "%" },
+          "light": { "value": 300, "target": 300, "unit": "lux" },
+          "temperature": { "value": 65, "target": 65, "unit": "°F" },
+          "humidity": { "value": 40, "target": 40, "unit": "%" }
+        }
+      },
+      "expected": {
+        "health_classification": "healthy",
+        "urgency": "low",
+        "recommendation_themes": ["on track", "maintenance"],
+        "should_not_contain": ["urgent", "critical", "stressed"]
+      },
+      "reasoning": "Exactly at target should be classified as healthy, not trigger false positives from boundary conditions."
+    },
+    {
+      "id": "edge_003",
+      "category": "edge_case",
+      "description": "Extreme outlier - sensor malfunction detection",
+      "input": {
+        "plant_type": "Philodendron",
+        "metrics": {
+          "soil_moisture": { "value": 150, "target": 50, "unit": "%" },
+          "light": { "value": 50000, "target": 800, "unit": "lux" },
+          "temperature": { "value": 72, "target": 70, "unit": "°F" },
+          "humidity": { "value": 55, "target": 50, "unit": "%" }
+        }
+      },
+      "expected": {
+        "health_classification": "unknown",
+        "urgency": "low",
+        "recommendation_themes": ["sensor error", "recalibrate", "check sensor placement"],
+        "should_not_contain": ["healthy", "water immediately", "critical stress"]
+      },
+      "reasoning": "150% moisture and 50000 lux are physically impossible. System should flag sensor issues, not hallucinate plant health advice."
+    },
+    {
+      "id": "edge_004",
+      "category": "edge_case",
+      "description": "Seasonal dormancy consideration",
+      "input": {
+        "plant_type": "Fiddle Leaf Fig",
+        "metrics": {
+          "soil_moisture": { "value": 30, "target": 45, "unit": "%" },
+          "light": { "value": 400, "target": 1000, "unit": "lux" },
+          "temperature": { "value": 65, "target": 70, "unit": "°F" },
+          "humidity": { "value": 35, "target": 50, "unit": "%" }
+        },
+        "additional_context": "Winter season, plant has slowed growth"
+      },
+      "expected": {
+        "health_classification": "healthy",
+        "urgency": "low",
+        "recommendation_themes": ["normal winter behavior", "reduce watering frequency", "accept lower light", "resume care in spring"],
+        "should_not_contain": ["dying", "critical", "immediate action"]
+      },
+      "reasoning": "Winter dormancy changes care needs. Lower light and drier soil are appropriate. System should contextualize seasonal changes."
+    },
+    {
+      "id": "edge_005",
+      "category": "edge_case",
+      "description": "New plant acclimation period",
+      "input": {
+        "plant_type": "Monstera",
+        "metrics": {
+          "soil_moisture": { "value": 50, "target": 45, "unit": "%" },
+          "light": { "value": 600, "target": 800, "unit": "lux" },
+          "temperature": { "value": 72, "target": 72, "unit": "°F" },
+          "humidity": { "value": 50, "target": 55, "unit": "%" }
+        },
+        "additional_context": "Plant was just purchased 3 days ago, showing some leaf drop"
+      },
+      "expected": {
+        "health_classification": "healthy",
+        "urgency": "low",
+        "recommendation_themes": ["transplant shock normal", "avoid moving", "maintain consistent conditions", "be patient"],
+        "should_not_contain": ["dying", "critical", "emergency"]
+      },
+      "reasoning": "New plants commonly drop leaves during acclimation. Metrics are fine. System should reassure user about normal adjustment period."
+    }
+  ]
+}

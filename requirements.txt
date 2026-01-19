@@ -1,0 +1,8 @@
+# Plant Health Evaluation Framework
+# Install with: pip install -r requirements.txt
+
+# Testing
+pytest>=7.0.0
+
+# LLM Integration (Gemini)
+google-genai>=1.57.0

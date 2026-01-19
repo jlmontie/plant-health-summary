@@ -1,0 +1,257 @@
+"""
+Plant Health Assessment Service.
+
+Production module that analyzes sensor data and returns health assessments.
+In production, this would:
+  1. Receive requests via Cloud Run
+  2. Generate health assessments using Vertex AI
+  3. Publish 5% of request/response pairs to Pub/Sub for async evaluation
+
+Usage:
+    # As a module
+    from src.plant_health import PlantHealthService
+    
+    service = PlantHealthService()
+    result = service.assess(plant_type="Pothos", metrics={...})
+    
+    # CLI for testing
+    python src/plant_health.py --plant "Peace Lily" --moisture 15 --light 600 --temp 72 --humidity 50
+"""
+
+import os
+import json
+import random
+import argparse
+from pathlib import Path
+from datetime import datetime
+from dataclasses import dataclass, asdict
+from typing import Optional
+
+from google import genai
+
+
+# =============================================================================
+# Configuration
+# =============================================================================
+
+PROJECT_ROOT = Path(__file__).parent.parent
+SYSTEM_PROMPT_PATH = PROJECT_ROOT / "prompts" / "plant_health_system.md"
+
+MODEL = "gemini-2.5-flash"
+
+# Fraction of requests to publish for async evaluation
+SAMPLE_RATE = 0.05
+
+
+# =============================================================================
+# Data Structures
+# =============================================================================
+
+@dataclass
+class SensorMetrics:
+    """Sensor readings for a plant."""
+    soil_moisture: float
+    soil_moisture_target: float
+    light: float
+    light_target: float
+    temperature: float
+    temperature_target: float
+    humidity: float
+    humidity_target: float
+
+
+@dataclass
+class AssessmentRequest:
+    """Input to the plant health service."""
+    request_id: str
+    plant_type: str
+    metrics: SensorMetrics
+    additional_context: Optional[str] = None
+
+
+@dataclass
+class AssessmentResponse:
+    """Output from the plant health service."""
+    request_id: str
+    plant_type: str
+    metrics: SensorMetrics
+    assessment: str
+    model: str
+    timestamp: str
+    additional_context: Optional[str] = None
+
+
+# =============================================================================
+# Plant Health Service
+# =============================================================================
+
+class PlantHealthService:
+    """
+    Production plant health assessment service.
+    
+    In production deployment:
+      - Runs on Cloud Run
+      - Calls Vertex AI for generation
+      - Publishes sample to Pub/Sub for async evaluation
+    """
+    
+    def __init__(self, model_name: str = MODEL, sample_rate: float = SAMPLE_RATE):
+        self.model_name = model_name
+        self.sample_rate = sample_rate
+        self.system_prompt = self._load_system_prompt()
+        self._client = None
+        
+        # Pub/Sub publisher would be initialized here in production
+        # self.publisher = pubsub_v1.PublisherClient()
+        # self.topic_path = publisher.topic_path(project_id, "eval-queue")
+    
+    def _load_system_prompt(self) -> str:
+        """Load system prompt from file."""
+        return SYSTEM_PROMPT_PATH.read_text()
+    
+    @property
+    def client(self):
+        """Lazy-load the client."""
+        if self._client is None:
+            api_key = os.environ.get("GEMINI_API_KEY")
+            if not api_key:
+                raise ValueError("GEMINI_API_KEY environment variable not set")
+            self._client = genai.Client(api_key=api_key)
+        return self._client
+    
+    def assess(self, request: AssessmentRequest) -> AssessmentResponse:
+        """
+        Generate a plant health assessment.
+        
+        Args:
+            request: Assessment request with plant type and sensor metrics
+            
+        Returns:
+            AssessmentResponse with the generated assessment
+        """
+        # Build prompt
+        user_prompt = self._build_prompt(request)
+        
+        # Generate assessment
+        result = self.client.models.generate_content(
+            model=self.model_name,
+            contents=[self.system_prompt, user_prompt],
+            config=genai.types.GenerateContentConfig(
+                temperature=0.3,
+                max_output_tokens=1000,
+            )
+        )
+        
+        response = AssessmentResponse(
+            request_id=request.request_id,
+            plant_type=request.plant_type,
+            metrics=request.metrics,
+            assessment=result.text,
+            model=self.model_name,
+            timestamp=datetime.now().isoformat(),
+            additional_context=request.additional_context,
+        )
+        
+        # Publish sample for async evaluation
+        self._maybe_publish_for_eval(request, response)
+        
+        return response
+    
+    def _build_prompt(self, request: AssessmentRequest) -> str:
+        """Build the user prompt from request data."""
+        m = request.metrics
+        prompt = f"""Analyze the health of this {request.plant_type} based on the sensor data:
+
+| Metric | Current | Target | Unit |
+|--------|---------|--------|------|
+| Soil Moisture | {m.soil_moisture} | {m.soil_moisture_target} | % |
+| Light | {m.light} | {m.light_target} | lux |
+| Temperature | {m.temperature} | {m.temperature_target} | F |
+| Humidity | {m.humidity} | {m.humidity_target} | % |
+"""
+        if request.additional_context:
+            prompt += f"\nAdditional Context: {request.additional_context}"
+        
+        prompt += "\n\nProvide a health assessment and care recommendations."
+        return prompt
+    
+    def _maybe_publish_for_eval(
+        self, 
+        request: AssessmentRequest, 
+        response: AssessmentResponse
+    ) -> None:
+        """
+        Publish a sample of request/response pairs for async evaluation.
+        
+        In production, this publishes to Pub/Sub which triggers the eval
+        Cloud Function to run LLM-as-judge and write results to BigQuery.
+        """
+        if random.random() > self.sample_rate:
+            return
+        
+        # Production: publish to Pub/Sub
+        # payload = {
+        #     "request": asdict(request),
+        #     "response": asdict(response),
+        # }
+        # self.publisher.publish(self.topic_path, json.dumps(payload).encode())
+        
+        # Demo: just log
+        print(f"[SAMPLE] Would publish to Pub/Sub: request_id={request.request_id}")
+
+
+# =============================================================================
+# CLI for Testing
+# =============================================================================
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Generate a plant health assessment"
+    )
+    parser.add_argument("--plant", required=True, help="Plant type (e.g., 'Peace Lily')")
+    parser.add_argument("--moisture", type=float, required=True, help="Soil moisture %")
+    parser.add_argument("--moisture-target", type=float, default=50, help="Target moisture %")
+    parser.add_argument("--light", type=float, required=True, help="Light level (lux)")
+    parser.add_argument("--light-target", type=float, default=750, help="Target light (lux)")
+    parser.add_argument("--temp", type=float, required=True, help="Temperature (F)")
+    parser.add_argument("--temp-target", type=float, default=70, help="Target temperature (F)")
+    parser.add_argument("--humidity", type=float, required=True, help="Humidity %")
+    parser.add_argument("--humidity-target", type=float, default=50, help="Target humidity %")
+    parser.add_argument("--context", type=str, help="Additional context")
+    parser.add_argument("--response-output", type=str, help="Response output file")
+    
+    args = parser.parse_args()
+    
+    request = AssessmentRequest(
+        request_id=f"cli-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
+        plant_type=args.plant,
+        metrics=SensorMetrics(
+            soil_moisture=args.moisture,
+            soil_moisture_target=args.moisture_target,
+            light=args.light,
+            light_target=args.light_target,
+            temperature=args.temp,
+            temperature_target=args.temp_target,
+            humidity=args.humidity,
+            humidity_target=args.humidity_target,
+        ),
+        additional_context=args.context,
+    )
+    
+    service = PlantHealthService(sample_rate=1.0)  # Always sample in CLI mode
+    response = service.assess(request)
+    
+    if args.response_output:
+        with open(args.response_output, "w") as f:
+            json.dump(asdict(response), f, indent=2)
+        print(f"Response written to {args.response_output}")
+        return
+    
+    print("\n" + "=" * 50)
+    print("ASSESSMENT")
+    print("=" * 50)
+    print(response.assessment)
+
+
+if __name__ == "__main__":
+    main()
