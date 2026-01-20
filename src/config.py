@@ -34,6 +34,10 @@ class Config:
     # Sampling rate for async evaluation (0.0 to 1.0)
     eval_sample_rate: float
 
+    # Pub/Sub settings
+    pubsub_topic: str | None
+    use_local_eval: bool  # If True, run eval locally instead of via Pub/Sub
+
 
 def load_config() -> Config:
     """Load configuration from environment variables."""
@@ -44,6 +48,8 @@ def load_config() -> Config:
         model_name=os.getenv("MODEL_NAME", "gemini-2.5-flash"),
         gemini_api_key=os.getenv("GEMINI_API_KEY"),
         eval_sample_rate=float(os.getenv("EVAL_SAMPLE_RATE", "0.05")),
+        pubsub_topic=os.getenv("PUBSUB_TOPIC"),
+        use_local_eval=os.getenv("USE_LOCAL_EVAL", "true").lower() == "true",
     )
 
 

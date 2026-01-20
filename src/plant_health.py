@@ -198,21 +198,65 @@ class PlantHealthService:
         """
         Publish a sample of request/response pairs for async evaluation.
         
-        In production, this publishes to Pub/Sub which triggers the eval
-        Cloud Function to run LLM-as-judge and write results to BigQuery.
+        Modes:
+        - Local eval (USE_LOCAL_EVAL=true): Run LLM-as-judge immediately in-process
+        - Pub/Sub (USE_LOCAL_EVAL=false): Publish to Pub/Sub for async processing
         """
         if random.random() > self.sample_rate:
             return
         
-        # Production: publish to Pub/Sub
-        # payload = {
-        #     "request": asdict(request),
-        #     "response": asdict(response),
-        # }
-        # self.publisher.publish(self.topic_path, json.dumps(payload).encode())
+        print(f"[EVAL SAMPLE] Request sampled for evaluation: {request.request_id}")
         
-        # Demo: just log
-        print(f"[SAMPLE] Would publish to Pub/Sub: request_id={request.request_id}")
+        if CONFIG.use_local_eval:
+            # Run evaluation locally (for demo/development)
+            self._run_local_eval(response)
+        elif CONFIG.pubsub_topic:
+            # Publish to Pub/Sub (for production)
+            self._publish_to_pubsub(response)
+        else:
+            print(f"[EVAL SAMPLE] No eval destination configured, skipping")
+    
+    def _run_local_eval(self, response: AssessmentResponse) -> None:
+        """Run LLM-as-judge evaluation locally."""
+        try:
+            # Import here to avoid circular dependency
+            from eval.run_eval import JudgeEvaluator
+            
+            judge = JudgeEvaluator()
+            evaluation = judge.evaluate(response)
+            
+            # Log results
+            score = evaluation.get("overall_score", "?")
+            hallucination = "YES" if evaluation.get("hallucination", {}).get("detected") else "no"
+            print(f"[EVAL RESULT] request_id={response.request_id} score={score}/5 hallucination={hallucination}")
+            
+            # Save to results directory
+            results_dir = PROJECT_ROOT / "results"
+            results_dir.mkdir(exist_ok=True)
+            result_file = results_dir / f"{response.request_id}.json"
+            result_file.write_text(json.dumps({
+                "response": asdict(response),
+                "evaluation": evaluation,
+            }, indent=2))
+            print(f"[EVAL RESULT] Saved to {result_file}")
+            
+        except Exception as e:
+            print(f"[EVAL ERROR] Local evaluation failed: {e}")
+    
+    def _publish_to_pubsub(self, response: AssessmentResponse) -> None:
+        """Publish response to Pub/Sub for async evaluation."""
+        try:
+            from google.cloud import pubsub_v1
+            
+            publisher = pubsub_v1.PublisherClient()
+            payload = json.dumps(asdict(response)).encode("utf-8")
+            
+            future = publisher.publish(CONFIG.pubsub_topic, payload)
+            message_id = future.result(timeout=10)
+            print(f"[PUBSUB] Published message {message_id} for request {response.request_id}")
+            
+        except Exception as e:
+            print(f"[PUBSUB ERROR] Failed to publish: {e}")
 
 
 # =============================================================================
