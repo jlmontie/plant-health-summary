@@ -18,7 +18,6 @@ Usage:
     python src/plant_health.py --plant "Peace Lily" --moisture 15 --light 600 --temp 72 --humidity 50
 """
 
-import os
 import json
 import random
 import argparse
@@ -29,6 +28,8 @@ from typing import Optional
 
 from google import genai
 
+from src.config import CONFIG
+
 
 # =============================================================================
 # Configuration
@@ -36,11 +37,6 @@ from google import genai
 
 PROJECT_ROOT = Path(__file__).parent.parent
 SYSTEM_PROMPT_PATH = PROJECT_ROOT / "prompts" / "plant_health_system.md"
-
-MODEL = "gemini-2.5-flash"
-
-# Fraction of requests to publish for async evaluation
-SAMPLE_RATE = 0.05
 
 
 # =============================================================================
@@ -95,7 +91,9 @@ class PlantHealthService:
       - Publishes sample to Pub/Sub for async evaluation
     """
     
-    def __init__(self, model_name: str = MODEL, sample_rate: float = SAMPLE_RATE):
+    def __init__(self, model_name: str | None = None, sample_rate: float | None = None):
+        model_name = model_name or CONFIG.model_name
+        sample_rate = sample_rate if sample_rate is not None else CONFIG.eval_sample_rate
         self.model_name = model_name
         self.sample_rate = sample_rate
         self.system_prompt = self._load_system_prompt()
@@ -111,12 +109,29 @@ class PlantHealthService:
     
     @property
     def client(self):
-        """Lazy-load the client."""
+        """
+        Lazy-load the Gemini client.
+        
+        Uses Vertex AI when USE_VERTEX_AI=true, otherwise uses API key.
+        """
         if self._client is None:
-            api_key = os.environ.get("GEMINI_API_KEY")
-            if not api_key:
-                raise ValueError("GEMINI_API_KEY environment variable not set")
-            self._client = genai.Client(api_key=api_key)
+            if CONFIG.use_vertex_ai:
+                # Vertex AI mode: uses ADC (Application Default Credentials)
+                # In Cloud Run, this is automatic via the service account
+                # Locally, run: gcloud auth application-default login
+                self._client = genai.Client(
+                    vertexai=True,
+                    project=CONFIG.gcp_project_id,
+                    location=CONFIG.gcp_location,
+                )
+            else:
+                # API key mode: for local development
+                if not CONFIG.gemini_api_key:
+                    raise ValueError(
+                        "GEMINI_API_KEY environment variable not set. "
+                        "Set it in .env or use USE_VERTEX_AI=true with GCP credentials."
+                    )
+                self._client = genai.Client(api_key=CONFIG.gemini_api_key)
         return self._client
     
     def assess(self, request: AssessmentRequest) -> AssessmentResponse:
@@ -138,7 +153,7 @@ class PlantHealthService:
             contents=[self.system_prompt, user_prompt],
             config=genai.types.GenerateContentConfig(
                 temperature=0.3,
-                max_output_tokens=1000,
+                max_output_tokens=2000,
             )
         )
         

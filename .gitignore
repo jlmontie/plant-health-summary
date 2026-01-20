@@ -41,6 +41,7 @@ ENV/
 # OS
 .DS_Store
 Thumbs.db
+.files
 
 # Testing
 .pytest_cache/
@@ -58,3 +59,6 @@ terraform/*.tfvars
 
 # Results (keep .gitkeep)
 results/*.json
+
+# Chainlit
+.chainlit/translations/
