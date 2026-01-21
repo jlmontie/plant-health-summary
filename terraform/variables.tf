@@ -103,3 +103,8 @@ variable "arize_space_id" {
     description = "Arize SpaceID"
     type        = string
 }
+
+variable "connected_sheet_url" {
+    description = "URL for the Google Sheet connected to BigQuery for public viewing"
+    type        = string
+}
