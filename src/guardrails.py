@@ -106,11 +106,24 @@ class InputClassifier:
         try:
             result = self.client.models.generate_content(
                 model=CONFIG.model_name,
-                contents=[self.system_prompt, prompt],
+                contents=prompt,
                 config=genai.types.GenerateContentConfig(
+                    system_instruction=self.system_prompt,
                     temperature=0.0,
-                    max_output_tokens=200,
+                    max_output_tokens=1000,  # Must be large enough for thinking + output
                     response_mime_type="application/json",
+                    response_schema={
+                        "type": "object",
+                        "properties": {
+                            "allow": {"type": "boolean"},
+                            "reason": {"type": "string"},
+                            "classification": {
+                                "type": "string",
+                                "enum": ["on_topic", "off_topic", "prompt_injection", "harmful"]
+                            }
+                        },
+                        "required": ["allow", "reason", "classification"]
+                    },
                 )
             )
             

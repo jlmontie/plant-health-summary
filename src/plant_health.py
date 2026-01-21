@@ -189,8 +189,9 @@ class PlantHealthService:
         # Generate assessment
         result = self.client.models.generate_content(
             model=self.model_name,
-            contents=[system_prompt, user_prompt],
+            contents=user_prompt,
             config=genai.types.GenerateContentConfig(
+                system_instruction=system_prompt,
                 temperature=0.3,
                 max_output_tokens=2000,
             )
