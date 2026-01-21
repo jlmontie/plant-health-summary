@@ -83,3 +83,17 @@ variable "github_repo" {
   description = "GitHub repository name (as it appears in the connection)"
   type        = string
 }
+
+# =============================================================================
+# Arize Phoenix Tracing
+# =============================================================================
+
+variable "arize_api_key" {
+    description = "Arize API key for remote monitoring"
+    type        = string
+}
+
+variable "arize_space_id" {
+    description = "Arize SpaceID"
+    type        = string
+}

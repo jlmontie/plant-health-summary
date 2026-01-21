@@ -276,6 +276,17 @@ resource "google_cloud_run_v2_service" "app" {
         value = "true"
       }
       
+      # Arize Phoenix tracing (remote monitoring)
+      env {
+        name  = "ARIZE_API_KEY"
+        value = var.arize_api_key
+      }
+      
+      env {
+        name  = "ARIZE_SPACE_ID"
+        value = var.arize_space_id
+      }
+      
       # Only include API key env var when not using Vertex AI
       dynamic "env" {
         for_each = var.use_vertex_ai ? [] : [1]

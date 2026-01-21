@@ -45,6 +45,10 @@ class Config:
     # PII redaction settings
     use_pii_redaction: bool  # If False, skip PII checks entirely
     use_cloud_dlp: bool      # If True, use Cloud DLP; if False, use Presidio
+    
+    # Arize Phoenix tracing (for remote monitoring)
+    arize_api_key: str | None
+    arize_space_id: str | None
 
 
 def load_config() -> Config:
@@ -61,6 +65,8 @@ def load_config() -> Config:
         violation_rate=float(os.getenv("VIOLATION_RATE", "0.2")),
         use_pii_redaction=os.getenv("USE_PII_REDACTION", "true").lower() == "true",
         use_cloud_dlp=os.getenv("USE_CLOUD_DLP", "false").lower() == "true",
+        arize_api_key=os.getenv("ARIZE_API_KEY"),
+        arize_space_id=os.getenv("ARIZE_SPACE_ID"),
     )
 
 
