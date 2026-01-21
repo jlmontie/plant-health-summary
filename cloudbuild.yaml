@@ -90,21 +90,27 @@ steps:
   # Deploy Cloud Function
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'deploy-function'
-    entrypoint: gcloud
+    entrypoint: bash
     args:
-      - 'functions'
-      - 'deploy'
-      - '${_FUNCTION_NAME}'
-      - '--gen2'
-      - '--region=${_REGION}'
-      - '--runtime=python312'
-      - '--source=gs://${PROJECT_ID}-function-source/function-source-${SHORT_SHA}.zip'
-      - '--entry-point=evaluate_pubsub'
-      - '--trigger-topic=${_PUBSUB_TOPIC}'
-      - '--service-account=${_FUNCTION_SA}'
-      - '--memory=512Mi'
-      - '--timeout=120s'
-      - '--set-env-vars=USE_VERTEX_AI=true,GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GCP_LOCATION=${_REGION},MODEL_NAME=gemini-2.5-flash'
+      - '-c'
+      - |
+        # Deploy the function
+        gcloud functions deploy ${_FUNCTION_NAME} \
+          --gen2 \
+          --region=${_REGION} \
+          --runtime=python312 \
+          --source=gs://${PROJECT_ID}-function-source/function-source-${SHORT_SHA}.zip \
+          --entry-point=evaluate_pubsub \
+          --trigger-topic=${_PUBSUB_TOPIC} \
+          --service-account=${_FUNCTION_SA} \
+          --memory=512Mi \
+          --timeout=120s \
+          --set-env-vars=USE_VERTEX_AI=true,GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GCP_LOCATION=${_REGION},MODEL_NAME=gemini-2.5-flash
+        
+        # Allow Pub/Sub to invoke the function (required for Eventarc triggers)
+        gcloud functions add-invoker-policy-binding ${_FUNCTION_NAME} \
+          --region=${_REGION} \
+          --member="serviceAccount:service-$PROJECT_NUMBER@gcp-sa-pubsub.iam.gserviceaccount.com"
     waitFor: ['upload-function']
 
 substitutions:
