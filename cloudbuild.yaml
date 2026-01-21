@@ -94,7 +94,14 @@ steps:
     args:
       - '-c'
       - |
-        # Deploy the function
+        # 1. Grant the Service Account permission to invoke Cloud Run services.
+        #    (We do this before deploy to ensure permissions exist)
+        gcloud projects add-iam-policy-binding ${PROJECT_ID} \
+          --member="serviceAccount:${_FUNCTION_SA}" \
+          --role="roles/run.invoker"
+
+        # 2. Deploy the function
+        #    Note the addition of --trigger-service-account
         gcloud functions deploy ${_FUNCTION_NAME} \
           --gen2 \
           --region=${_REGION} \
@@ -103,14 +110,10 @@ steps:
           --entry-point=evaluate_pubsub \
           --trigger-topic=${_PUBSUB_TOPIC} \
           --service-account=${_FUNCTION_SA} \
+          --trigger-service-account=${_FUNCTION_SA} \
           --memory=512Mi \
           --timeout=120s \
           --set-env-vars=USE_VERTEX_AI=true,GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GCP_LOCATION=${_REGION},MODEL_NAME=gemini-2.5-flash
-        
-        # Allow Pub/Sub to invoke the function (required for Eventarc triggers)
-        gcloud functions add-invoker-policy-binding ${_FUNCTION_NAME} \
-          --region=${_REGION} \
-          --member="serviceAccount:service-$PROJECT_NUMBER@gcp-sa-pubsub.iam.gserviceaccount.com"
     waitFor: ['upload-function']
 
 substitutions:
