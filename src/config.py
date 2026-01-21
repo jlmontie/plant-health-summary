@@ -66,7 +66,7 @@ def load_config() -> Config:
         eval_sample_rate=float(os.getenv("EVAL_SAMPLE_RATE", "0.05")),
         pubsub_topic=os.getenv("PUBSUB_TOPIC"),
         use_local_eval=os.getenv("USE_LOCAL_EVAL", "true").lower() == "true",
-        violation_rate=float(os.getenv("VIOLATION_RATE", "0.2")),
+        violation_rate=float(os.getenv("VIOLATION_RATE", "0.85")),
         use_pii_redaction=os.getenv("USE_PII_REDACTION", "true").lower() == "true",
         use_cloud_dlp=os.getenv("USE_CLOUD_DLP", "false").lower() == "true",
         arize_api_key=os.getenv("ARIZE_API_KEY"),

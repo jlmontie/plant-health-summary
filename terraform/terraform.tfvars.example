@@ -15,8 +15,9 @@ use_vertex_ai = true
 min_instances = 1
 max_instances = 2
 
-# Evaluation sampling rate
+# Evaluation settings
 eval_sample_rate = 0.05
+violation_rate = 0.2
 
 # GitHub for Cloud Build (2nd gen connection)
 # First create a connection in Console: Cloud Build > Repositories > Connect Repository
