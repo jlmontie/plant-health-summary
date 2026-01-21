@@ -32,7 +32,6 @@ Environment:
 """
 
 import json
-import os
 import sys
 import argparse
 from pathlib import Path
@@ -41,8 +40,9 @@ from typing import Optional
 
 from google import genai
 
-# Import production service
+# Import production service and config
 sys.path.insert(0, str(Path(__file__).parent.parent))
+from src.config import CONFIG
 from src.plant_health import (
     PlantHealthService,
     AssessmentRequest,
@@ -59,10 +59,9 @@ PROJECT_ROOT = Path(__file__).parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
 PROMPTS_DIR = PROJECT_ROOT / "prompts"
 
-JUDGE_PROMPT_PATH = PROMPTS_DIR / "llm_judge.md"
+JUDGE_SYSTEM_PATH = PROMPTS_DIR / "llm_judge_system.txt"
+JUDGE_TEMPLATE_PATH = PROMPTS_DIR / "llm_judge_template.txt"
 GOLDEN_DATASET_PATH = DATA_DIR / "golden_dataset.json"
-
-JUDGE_MODEL = "gemini-2.5-flash"
 
 
 # =============================================================================
@@ -70,17 +69,9 @@ JUDGE_MODEL = "gemini-2.5-flash"
 # =============================================================================
 
 def load_judge_prompt() -> tuple[str, str]:
-    """Load the LLM-as-judge prompt, returning (system_prompt, eval_template)."""
-    content = JUDGE_PROMPT_PATH.read_text()
-    
-    system_start = content.find("## System Prompt\n\n```\n") + len("## System Prompt\n\n```\n")
-    system_end = content.find("\n```\n\n---\n\n## Evaluation")
-    system_prompt = content[system_start:system_end].strip()
-    
-    template_start = content.find("## Evaluation Prompt Template\n\n```\n") + len("## Evaluation Prompt Template\n\n```\n")
-    template_end = content.find("\n```\n```\n\n---\n\n## Scoring")
-    eval_template = content[template_start:template_end].strip()
-    
+    """Load the LLM-as-judge prompts from separate files."""
+    system_prompt = JUDGE_SYSTEM_PATH.read_text().strip()
+    eval_template = JUDGE_TEMPLATE_PATH.read_text().strip()
     return system_prompt, eval_template
 
 
@@ -104,7 +95,8 @@ class JudgeEvaluator:
       - Writes evaluation to BigQuery
     """
     
-    def __init__(self, model_name: str = JUDGE_MODEL):
+    def __init__(self, model_name: str | None = None):
+        model_name = model_name or CONFIG.model_name
         self.model_name = model_name
         self.system_prompt, self.eval_template = load_judge_prompt()
         self._client = None
@@ -115,12 +107,25 @@ class JudgeEvaluator:
     
     @property
     def client(self):
-        """Lazy-load the client."""
+        """
+        Lazy-load the Gemini client.
+        
+        Uses Vertex AI when USE_VERTEX_AI=true, otherwise uses API key.
+        """
         if self._client is None:
-            api_key = os.environ.get("GEMINI_API_KEY")
-            if not api_key:
-                raise ValueError("GEMINI_API_KEY environment variable not set")
-            self._client = genai.Client(api_key=api_key)
+            if CONFIG.use_vertex_ai:
+                self._client = genai.Client(
+                    vertexai=True,
+                    project=CONFIG.gcp_project_id,
+                    location=CONFIG.gcp_location,
+                )
+            else:
+                if not CONFIG.gemini_api_key:
+                    raise ValueError(
+                        "GEMINI_API_KEY environment variable not set. "
+                        "Set it in .env or use USE_VERTEX_AI=true with GCP credentials."
+                    )
+                self._client = genai.Client(api_key=CONFIG.gemini_api_key)
         return self._client
     
     def evaluate(self, response: AssessmentResponse, expected: Optional[dict] = None) -> dict:
@@ -164,6 +169,7 @@ class JudgeEvaluator:
             "eval_timestamp": datetime.now().isoformat(),
             "judge_model": self.model_name,
             "system_model": response.model,
+            "prompt_variant": getattr(response, "prompt_variant", "normal"),
         }
         
         if expected:
@@ -205,11 +211,13 @@ class JudgeEvaluator:
         Write evaluation results to BigQuery.
         
         In production, this persists the evaluation for dashboards and alerting.
+        The prompt_variant field enables analysis of how different prompts affect scores.
         """
         # Production: write to BigQuery
         # row = {
         #     "request_id": evaluation["_metadata"]["request_id"],
         #     "timestamp": evaluation["_metadata"]["eval_timestamp"],
+        #     "prompt_variant": evaluation["_metadata"]["prompt_variant"],
         #     "accuracy_score": evaluation["accuracy"]["score"],
         #     "relevance_score": evaluation["relevance"]["score"],
         #     "urgency_score": evaluation["urgency_calibration"]["score"],
@@ -221,7 +229,9 @@ class JudgeEvaluator:
         # self.bq_client.insert_rows_json(self.table_id, [row])
         
         # Demo: log
-        print(f"[BIGQUERY] Would write evaluation: request_id={evaluation['_metadata']['request_id']}")
+        metadata = evaluation["_metadata"]
+        variant = metadata.get("prompt_variant", "normal")
+        print(f"[BIGQUERY] Would write evaluation: request_id={metadata['request_id']} prompt_variant={variant}")
 
 
 # =============================================================================
@@ -253,6 +263,7 @@ def evaluate_single(payload: dict) -> dict:
         model=resp_data["model"],
         timestamp=resp_data["timestamp"],
         additional_context=resp_data.get("additional_context"),
+        prompt_variant=resp_data.get("prompt_variant", "normal"),
     )
     
     judge = JudgeEvaluator()
@@ -356,11 +367,11 @@ def run_batch_evaluation(
         print("Plant Health Evaluation Framework")
         print("=" * 50)
     
-    # Check API key
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        print("Error: GEMINI_API_KEY environment variable not set")
-        print("  Get your key at: https://aistudio.google.com/app/apikey")
+    # Check credentials
+    if not CONFIG.use_vertex_ai and not CONFIG.gemini_api_key:
+        print("Error: No credentials configured.")
+        print("  Option 1: Set GEMINI_API_KEY in .env")
+        print("  Option 2: Set USE_VERTEX_AI=true and configure GCP credentials")
         sys.exit(1)
     
     # Load golden dataset
@@ -401,7 +412,9 @@ def run_batch_evaluation(
             if verbose:
                 score = evaluation.get("overall_score", "?")
                 hallucination = "YES" if evaluation["hallucination"]["detected"] else "no"
-                print(f"    Score: {score}/5 | Hallucination: {hallucination}")
+                variant = evaluation["_metadata"].get("prompt_variant", "normal")
+                variant_tag = f" [{variant}]" if variant != "normal" else ""
+                print(f"    Score: {score}/5 | Hallucination: {hallucination}{variant_tag}")
         
         except Exception as e:
             if verbose:
@@ -421,7 +434,7 @@ def run_batch_evaluation(
     output = {
         "metadata": {
             "timestamp": datetime.now().isoformat(),
-            "model_judge": JUDGE_MODEL,
+            "model_judge": CONFIG.model_name,
             "n_examples": len(examples),
             "n_successful": len(successful_evals),
         },
