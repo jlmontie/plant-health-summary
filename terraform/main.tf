@@ -298,6 +298,16 @@ resource "google_cloud_run_v2_service" "app" {
         name  = "ARIZE_SPACE_ID"
         value = var.arize_space_id
       }
+
+      env {
+        name  = "VIOLATION_RATE"
+        value = var.violation_rate
+      }
+
+      env {
+        name  = "CONNECTED_SHEET_URL"
+        value = var.connected_sheet_url
+      }
       
       # Only include API key env var when not using Vertex AI
       dynamic "env" {

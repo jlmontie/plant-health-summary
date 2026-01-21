@@ -71,6 +71,7 @@ def load_config() -> Config:
         use_cloud_dlp=os.getenv("USE_CLOUD_DLP", "false").lower() == "true",
         arize_api_key=os.getenv("ARIZE_API_KEY"),
         arize_space_id=os.getenv("ARIZE_SPACE_ID"),
+        connected_sheet_url=os.getenv("CONNECTED_SHEET_URL"),
     )
 
 
