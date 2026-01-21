@@ -69,6 +69,12 @@ variable "eval_sample_rate" {
   default     = 0.05
 }
 
+variable "violation_rate" {
+    description = "Fraction of requests to be executed with violation prompts"
+    type        = number
+    default     = 0.2
+}
+
 # =============================================================================
 # GitHub Settings (for Cloud Build 2nd Gen Connection)
 # =============================================================================
