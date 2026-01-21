@@ -79,6 +79,13 @@ resource "google_project_iam_member" "cloudbuild_logs_writer" {
   member  = "serviceAccount:${google_service_account.cloudbuild.email}"
 }
 
+# Allow Cloud Build to manage IAM (needed to grant invoker permissions during function deploy)
+resource "google_project_iam_member" "cloudbuild_iam_admin" {
+  project = var.project_id
+  role    = "roles/resourcemanager.projectIamAdmin"
+  member  = "serviceAccount:${google_service_account.cloudbuild.email}"
+}
+
 # Allow Cloud Build to deploy Cloud Functions
 resource "google_project_iam_member" "cloudbuild_functions_admin" {
   project = var.project_id
