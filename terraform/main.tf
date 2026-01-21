@@ -33,6 +33,7 @@ resource "google_project_service" "required_apis" {
     "artifactregistry.googleapis.com",
     "dlp.googleapis.com",           # Cloud DLP for PII redaction
     "aiplatform.googleapis.com",    # Vertex AI for Gemini
+    "eventarc.googleapis.com",      # Eventarc for Cloud Function triggers
   ])
   
   project = var.project_id
