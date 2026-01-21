@@ -33,7 +33,7 @@ steps:
 
 substitutions:
   _REGION: us-central1
-  _REPO_NAME: plant-health-repo
+  _REPO_NAME: plant-health-summary
   _SERVICE_NAME: plant-health-app
 
 options:
