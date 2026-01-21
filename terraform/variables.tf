@@ -48,9 +48,9 @@ variable "gemini_api_key" {
 # =============================================================================
 
 variable "min_instances" {
-  description = "Minimum number of Cloud Run instances"
+  description = "Minimum number of Cloud Run instances (1+ recommended for Chainlit sessions)"
   type        = number
-  default     = 0
+  default     = 1
 }
 
 variable "max_instances" {
