@@ -239,6 +239,11 @@ resource "google_cloud_run_v2_service" "app" {
       }
       
       env {
+        name  = "APP_NAME"
+        value = var.app_name
+      }
+      
+      env {
         name  = "USE_VERTEX_AI"
         value = tostring(var.use_vertex_ai)
       }

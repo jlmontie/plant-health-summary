@@ -113,11 +113,12 @@ steps:
           --trigger-service-account=${_FUNCTION_SA} \
           --memory=512Mi \
           --timeout=120s \
-          --set-env-vars=USE_VERTEX_AI=true,GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GCP_LOCATION=${_REGION},MODEL_NAME=gemini-2.5-flash
+          --set-env-vars=APP_NAME=${_APP_NAME},USE_VERTEX_AI=true,GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GCP_LOCATION=${_REGION},MODEL_NAME=gemini-2.5-flash
     waitFor: ['upload-function']
 
 substitutions:
   _REGION: us-central1
+  _APP_NAME: plant-health
   _REPO_NAME: plant-health
   _SERVICE_NAME: plant-health-app
   _FUNCTION_NAME: plant-health-evaluator

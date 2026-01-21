@@ -106,8 +106,9 @@ class JudgeEvaluator:
         self._bq_client = None
         
         # Table ID from config: {project}.{dataset}.{table}
+        # Dataset name uses app_name to match Terraform: replace("${var.app_name}_evals", "-", "_")
         if CONFIG.gcp_project_id:
-            dataset = CONFIG.gcp_project_id.replace("-", "_") + "_evals"
+            dataset = CONFIG.app_name.replace("-", "_") + "_evals"
             self.table_id = f"{CONFIG.gcp_project_id}.{dataset}.evaluations"
         else:
             self.table_id = None

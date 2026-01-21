@@ -20,6 +20,9 @@ class Config:
     
     frozen=True makes instances immutable, preventing accidental modification.
     """
+    # Application name (must match Terraform var.app_name)
+    app_name: str
+    
     # Vertex AI settings
     use_vertex_ai: bool
     gcp_project_id: str | None
@@ -54,6 +57,7 @@ class Config:
 def load_config() -> Config:
     """Load configuration from environment variables."""
     return Config(
+        app_name=os.getenv("APP_NAME", "plant-health"),
         use_vertex_ai=os.getenv("USE_VERTEX_AI", "false").lower() == "true",
         gcp_project_id=os.getenv("GOOGLE_CLOUD_PROJECT"),
         gcp_location=os.getenv("GCP_LOCATION", "us-central1"),
