@@ -16,6 +16,7 @@ import chainlit as cl
 from src.observability import init_tracing
 PHOENIX_URL = init_tracing()
 
+from src.config import CONFIG
 from src.guardrails import InputGuardrails
 from src.plant_health import (
     PlantHealthService,
@@ -103,6 +104,9 @@ async def on_chat_start():
     
     if PHOENIX_URL:
         welcome += f"[View LLM traces in Phoenix]({PHOENIX_URL})\n\n"
+
+    if CONFIG.connected_sheet_url:
+        welcome += f"[View Evaluation Results]({CONFIG.connected_sheet_url})\n\n"
     
     welcome += "---\n\n**Select a plant from your collection:**"
     
