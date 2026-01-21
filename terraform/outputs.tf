@@ -33,8 +33,8 @@ output "evaluator_service_account" {
 }
 
 output "evaluator_function_name" {
-  description = "Name of the evaluator Cloud Function"
-  value       = google_cloudfunctions2_function.evaluator.name
+  description = "Name of the evaluator Cloud Function (deployed by Cloud Build)"
+  value       = "${var.app_name}-evaluator"
 }
 
 output "function_source_bucket" {
@@ -52,11 +52,25 @@ output "deployment_instructions" {
     
     Deployment Steps:
     
-    1. Build and push the container:
+    1. Push to main branch - Cloud Build will automatically:
+       - Build and push the container image
+       - Deploy to Cloud Run
+       - Package and deploy the evaluator Cloud Function
+    
+    2. Or deploy manually:
+       
+       # App (Cloud Run)
        docker build -t ${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.app.name}/app:latest .
        docker push ${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.app.name}/app:latest
-    
-    2. The Cloud Run service will automatically use the new image.
+       gcloud run deploy ${var.app_name}-app --image ${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.app.name}/app:latest --region ${var.region}
+       
+       # Evaluator (Cloud Function)
+       zip -r function-source.zip eval/ src/ prompts/ data/ requirements.txt
+       gsutil cp function-source.zip gs://${var.project_id}-function-source/
+       gcloud functions deploy ${var.app_name}-evaluator --gen2 --region=${var.region} --runtime=python312 \
+         --source=gs://${var.project_id}-function-source/function-source.zip \
+         --entry-point=evaluate_pubsub --trigger-topic=${var.app_name}-eval-queue \
+         --service-account=${var.app_name}-eval-sa@${var.project_id}.iam.gserviceaccount.com
     
     3. Access the app at: ${google_cloud_run_v2_service.app.uri}
     

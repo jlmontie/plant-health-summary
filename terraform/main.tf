@@ -365,79 +365,29 @@ resource "google_storage_bucket" "function_source" {
 # =============================================================================
 # Cloud Function (Async Evaluator)
 # =============================================================================
-
-resource "google_cloudfunctions2_function" "evaluator" {
-  name     = "${var.app_name}-evaluator"
-  location = var.region
-  
-  description = "Async evaluation function triggered by Pub/Sub"
-  
-  build_config {
-    runtime     = "python312"
-    entry_point = "evaluate_pubsub"
-    
-    source {
-      storage_source {
-        bucket = google_storage_bucket.function_source.name
-        object = google_storage_bucket_object.function_source.name
-      }
-    }
-  }
-  
-  service_config {
-    min_instance_count = 0
-    max_instance_count = 5
-    
-    available_memory   = "512Mi"
-    timeout_seconds    = 120
-    
-    service_account_email = google_service_account.evaluator.email
-    
-    environment_variables = {
-      USE_VERTEX_AI        = tostring(var.use_vertex_ai)
-      GOOGLE_CLOUD_PROJECT = var.project_id
-      GCP_LOCATION         = var.region
-      MODEL_NAME           = "gemini-2.5-flash"
-    }
-    
-    # Secret environment variables (only when not using Vertex AI)
-    dynamic "secret_environment_variables" {
-      for_each = var.use_vertex_ai ? [] : [1]
-      content {
-        key        = "GEMINI_API_KEY"
-        project_id = var.project_id
-        secret     = google_secret_manager_secret.gemini_api_key[0].secret_id
-        version    = "latest"
-      }
-    }
-  }
-  
-  event_trigger {
-    trigger_region = var.region
-    event_type     = "google.cloud.pubsub.topic.v1.messagePublished"
-    pubsub_topic   = google_pubsub_topic.eval_queue.id
-    retry_policy   = "RETRY_POLICY_RETRY"
-  }
-  
-  depends_on = [
-    google_project_service.required_apis,
-    google_storage_bucket_object.function_source,
-  ]
-}
-
-# Placeholder for function source - actual source uploaded via Cloud Build
-# This creates an empty placeholder so terraform can plan before first deploy
-resource "google_storage_bucket_object" "function_source" {
-  name   = "function-source-placeholder.zip"
-  bucket = google_storage_bucket.function_source.name
-  
-  # Empty content - Cloud Build will upload the real source
-  content = "placeholder"
-  
-  lifecycle {
-    ignore_changes = [
-      content,
-      detect_md5hash,
-    ]
-  }
-}
+# 
+# NOTE: The Cloud Function is deployed by Cloud Build, not Terraform.
+# This avoids the chicken-and-egg problem where Terraform would need
+# the function source to exist before it can create the function.
+#
+# Cloud Build handles:
+#   1. Packaging the source code (eval/, src/, prompts/, data/)
+#   2. Uploading to GCS bucket
+#   3. Deploying the function via `gcloud functions deploy`
+#
+# Terraform manages the supporting infrastructure:
+#   - GCS bucket for source code
+#   - Service account and IAM permissions
+#   - Pub/Sub topic (trigger source)
+#   - BigQuery table (evaluation results)
+#
+# To deploy the function manually (first time or updates):
+#   cd /path/to/repo
+#   zip -r function-source.zip eval/ src/ prompts/ data/ requirements.txt
+#   gsutil cp function-source.zip gs://${var.project_id}-function-source/
+#   gcloud functions deploy ${var.app_name}-evaluator \
+#     --gen2 --region=${var.region} --runtime=python312 \
+#     --source=gs://${var.project_id}-function-source/function-source.zip \
+#     --entry-point=evaluate_pubsub \
+#     --trigger-topic=${var.app_name}-eval-queue \
+#     --service-account=${var.app_name}-eval-sa@${var.project_id}.iam.gserviceaccount.com

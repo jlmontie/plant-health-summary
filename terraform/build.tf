@@ -71,3 +71,24 @@ resource "google_project_iam_member" "cloudbuild_vertex_ai" {
   role    = "roles/aiplatform.user"
   member  = "serviceAccount:${google_service_account.cloudbuild.email}"
 }
+
+# Allow Cloud Build to write logs
+resource "google_project_iam_member" "cloudbuild_logs_writer" {
+  project = var.project_id
+  role    = "roles/logging.logWriter"
+  member  = "serviceAccount:${google_service_account.cloudbuild.email}"
+}
+
+# Allow Cloud Build to deploy Cloud Functions
+resource "google_project_iam_member" "cloudbuild_functions_admin" {
+  project = var.project_id
+  role    = "roles/cloudfunctions.admin"
+  member  = "serviceAccount:${google_service_account.cloudbuild.email}"
+}
+
+# Allow Cloud Build to upload to the function source bucket
+resource "google_storage_bucket_iam_member" "cloudbuild_function_source" {
+  bucket = google_storage_bucket.function_source.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.cloudbuild.email}"
+}
