@@ -30,7 +30,11 @@ resource "google_cloudbuild_trigger" "app" {
   # Service account for Cloud Build
   service_account = google_service_account.cloudbuild.id
   
-  depends_on = [google_project_service.required_apis]
+  # CRITICAL: Artifact Registry must exist before trigger can push images
+  depends_on = [
+    google_project_service.required_apis,
+    google_artifact_registry_repository.app,
+  ]
 }
 
 # Dedicated service account for Cloud Build

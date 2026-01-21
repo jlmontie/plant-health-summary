@@ -45,7 +45,7 @@ resource "google_project_service" "required_apis" {
 
 resource "google_artifact_registry_repository" "app" {
   location      = var.region
-  repository_id = "${var.app_name}-repo"
+  repository_id = var.app_name  # Match the name used in cloudbuild.yaml
   description   = "Container images for ${var.app_name}"
   format        = "DOCKER"
   
@@ -57,7 +57,12 @@ resource "google_artifact_registry_repository" "app" {
 # =============================================================================
 
 locals {
-  container_image = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.app.name}/app:latest"
+  # Use a placeholder image for initial deployment
+  # Cloud Build will update this to the real image on first push
+  container_image = "gcr.io/cloudrun/hello"
+  
+  # This is the actual image path Cloud Build will use
+  real_image_path = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.app.name}/app:latest"
 }
 
 # =============================================================================
@@ -217,7 +222,7 @@ resource "google_cloud_run_v2_service" "app" {
       image = local.container_image
       
       ports {
-        container_port = 8000
+        container_port = 8080  # Cloud Run default, matches Dockerfile
       }
       
       env {
@@ -281,6 +286,14 @@ resource "google_cloud_run_v2_service" "app" {
   depends_on = [
     google_project_service.required_apis,
   ]
+  
+  # CRITICAL: Ignore image changes - Cloud Build manages the image
+  # Without this, terraform would revert to placeholder on every apply
+  lifecycle {
+    ignore_changes = [
+      template[0].containers[0].image,
+    ]
+  }
 }
 
 # Allow unauthenticated access (public demo)
