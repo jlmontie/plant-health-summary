@@ -66,6 +66,9 @@ steps:
         cp -r data /workspace/function-package/
         cp requirements.txt /workspace/function-package/
         
+        # Cloud Functions requires main.py at root level
+        cp eval/main.py /workspace/function-package/main.py
+        
         # Create the zip file
         cd /workspace/function-package
         zip -r /workspace/function-source.zip .
