@@ -97,11 +97,17 @@ async def on_chat_start():
             )
         )
     
+    # Build welcome message with Phoenix link if available
+    welcome = "# Plant Health Assistant\n\n"
+    welcome += "**AI Safety Demo** - Input guardrails, PII protection, and LLM observability.\n\n"
+    
+    if PHOENIX_URL:
+        welcome += f"[View LLM traces in Phoenix]({PHOENIX_URL})\n\n"
+    
+    welcome += "---\n\n**Select a plant from your collection:**"
+    
     await cl.Message(
-        content=(
-            "# Plant Health Assistant\n\n"
-            "Select a plant from your collection to get started:"
-        ),
+        content=welcome,
         actions=actions,
     ).send()
 
@@ -231,14 +237,21 @@ async def on_message(message: cl.Message):
     )
     
     # Show thinking indicator
-    msg = cl.Message(content="")
+    msg = cl.Message(content="Analyzing sensor data...")
     await msg.send()
     
-    # Generate assessment
-    response = service.assess(request)
+    # Generate assessment with error handling
+    try:
+        response = service.assess(request)
+        msg.content = response.assessment
+    except Exception as e:
+        print(f"[ERROR] Assessment failed: {e}")
+        msg.content = (
+            "I encountered an issue while generating the assessment. "
+            "Please try again in a moment.\n\n"
+            f"*Error: {type(e).__name__}*"
+        )
     
-    # Display result
-    msg.content = response.assessment
     await msg.update()
 
 
@@ -248,17 +261,17 @@ async def on_message(message: cl.Message):
 
 def _status_indicator(metric: dict) -> str:
     """
-    Returns a status indicator based on deviation from target.
+    Returns a visual status indicator based on deviation from target.
     
     OK = within 15% of target
     WARN = 15-40% off target  
-    CRIT = more than 40% off target
+    CRITICAL = more than 40% off target
     """
     value = metric["value"]
     target = metric["target"]
     
     if target == 0:
-        return "OK" if value == 0 else "CRIT"
+        return "OK" if value == 0 else "CRITICAL"
     
     deviation = abs(value - target) / target
     
@@ -267,7 +280,7 @@ def _status_indicator(metric: dict) -> str:
     elif deviation <= 0.40:
         return "WARN"
     else:
-        return "CRIT"
+        return "CRITICAL"
 
 
 def _format_block_message(result) -> str:
@@ -275,8 +288,8 @@ def _format_block_message(result) -> str:
     if result.classification == "off_topic":
         return (
             "I'm a plant health assistant and can only help with plant-related questions. "
-            f"Your message appears to be about something else.\n\n"
-            f"Try asking about your plant's health, watering needs, or care recommendations."
+            "Your message appears to be about something else.\n\n"
+            "Try asking about your plant's health, watering needs, or care recommendations."
         )
     elif result.classification == "prompt_injection":
         return (
@@ -285,8 +298,8 @@ def _format_block_message(result) -> str:
         )
     else:
         return (
-            f"I wasn't able to process that request. "
-            f"Please try rephrasing your question about your plant."
+            "I wasn't able to process that request. "
+            "Please try rephrasing your question about your plant."
         )
 
 # =============================================================================

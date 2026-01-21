@@ -1,14 +1,16 @@
-# Welcome to Chainlit! 🚀🤖
+# Plant Health Assistant
 
-Hi there, Developer! 👋 We're excited to have you on board. Chainlit is a powerful tool designed to help you prototype, debug and share applications built on top of LLMs.
+Analyze plant sensor data and receive health assessments with care recommendations.
 
-## Useful Links 🔗
+## How to Use
 
-- **Documentation:** Get started with our comprehensive [Chainlit Documentation](https://docs.chainlit.io) 📚
-- **Discord Community:** Join our friendly [Chainlit Discord](https://discord.gg/k73SQ3FyUh) to ask questions, share your projects, and connect with other developers! 💬
+1. Select a plant from your collection using the buttons
+2. Review the current sensor readings
+3. Send any message to request a health assessment
 
-We can't wait to see what you create with Chainlit! Happy coding! 💻😊
+## Features
 
-## Welcome screen
-
-To modify the welcome screen, edit the `chainlit.md` file at the root of your project. If you do not want a welcome screen, just leave this file empty.
+- **Input Guardrails** - Prompt injection detection and topic enforcement
+- **PII Protection** - Sensitive data is automatically redacted
+- **Structured Output** - Consistent, validated response format
+- **Full Observability** - All LLM calls are traced in Phoenix
