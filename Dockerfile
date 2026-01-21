@@ -25,8 +25,9 @@ RUN python -m spacy download en_core_web_lg
 # Copy application code
 COPY . .
 
-# Expose Chainlit port
-EXPOSE 8000
+# Cloud Run injects PORT env var (default 8080)
+ENV PORT=8080
+EXPOSE 8080
 
-# Run the application
-CMD ["chainlit", "run", "app.py", "--host", "0.0.0.0", "--port", "8000"]
+# Run the application using shell form to expand $PORT
+CMD chainlit run app.py --host 0.0.0.0 --port $PORT
