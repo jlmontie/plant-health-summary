@@ -31,7 +31,8 @@ resource "google_project_service" "required_apis" {
     "bigquery.googleapis.com",
     "secretmanager.googleapis.com",
     "artifactregistry.googleapis.com",
-    "dlp.googleapis.com",  # Cloud DLP for PII redaction
+    "dlp.googleapis.com",           # Cloud DLP for PII redaction
+    "aiplatform.googleapis.com",    # Vertex AI for Gemini
   ])
   
   project = var.project_id
@@ -212,6 +213,10 @@ resource "google_cloud_run_v2_service" "app" {
   location = var.region
   
   template {
+    # Session affinity ensures the same client hits the same instance
+    # Critical for Chainlit which stores sessions in memory
+    session_affinity = true
+    
     scaling {
       min_instance_count = var.min_instances
       max_instance_count = var.max_instances
