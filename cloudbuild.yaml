@@ -45,12 +45,17 @@ steps:
   # ==========================================================================
   
   # Package function source code
-  - name: 'gcr.io/cloud-builders/gcloud'
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'package-function'
     entrypoint: bash
     args:
       - '-c'
       - |
+        set -e  # Exit on error
+        
+        # Install zip if not present
+        apt-get update -qq && apt-get install -qq -y zip > /dev/null
+        
         # Create a clean directory for function source
         mkdir -p /workspace/function-package
         
@@ -65,6 +70,8 @@ steps:
         cd /workspace/function-package
         zip -r /workspace/function-source.zip .
         
+        # Verify the zip was created
+        ls -la /workspace/function-source.zip
         echo "Function source packaged successfully"
     waitFor: ['-']  # Start immediately, parallel with app build
 
