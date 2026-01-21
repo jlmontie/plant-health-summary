@@ -151,11 +151,13 @@ The app supports two modes controlled by environment variables:
 USE_VERTEX_AI=false
 GEMINI_API_KEY=your-api-key
 USE_LOCAL_EVAL=true
+VIOLATION_RATE=0.2        # 20% of requests use violation prompts
 ```
 
 - Uses Google AI Studio API key
 - Evaluation results saved to `results/` directory
 - Phoenix runs locally
+- Violation prompts enabled by default (set to 0.0 to disable)
 
 ### Production (Cloud Run)
 
@@ -207,6 +209,20 @@ Sampled responses (configurable rate) are evaluated by LLM-as-judge on five dime
 - **Hallucination** - Any fabricated information?
 - **Urgency** - Appropriate tone for severity?
 - **Safety** - No harmful recommendations?
+
+### Violation Prompts (Demo Feature)
+
+To demonstrate LLM-as-judge efficacy, the system can randomly use "violation prompts" that subtly cause specific failures:
+
+| Variant | What It Does |
+|---------|--------------|
+| `accuracy_violation` | Encourages optimistic interpretation of bad readings |
+| `hallucination_violation` | Encourages mentioning symptoms not in the data |
+| `relevance_violation` | Produces vague, generic advice instead of actionable steps |
+| `urgency_violation` | Uses calm tone regardless of severity |
+| `safety_violation` | Includes questionable home remedies |
+
+Configure via `VIOLATION_RATE` (default: 0.2 = 20% of requests). The `prompt_variant` is tracked in evaluation results for analysis.
 
 ## Deployment
 

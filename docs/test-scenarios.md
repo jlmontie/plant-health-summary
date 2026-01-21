@@ -18,6 +18,39 @@ chainlit run app.py
 
 ---
 
+## Violation Prompts (LLM-as-Judge Demo)
+
+The system includes "violation prompts" that subtly cause evaluation failures. This demonstrates why LLM-as-judge is valuable - it can catch subtle quality issues that rule-based systems would miss.
+
+### Quick Test
+
+```bash
+# Force all requests to use violation prompts
+VIOLATION_RATE=1.0 chainlit run app.py
+
+# Run batch evaluation to see scores
+python eval/run_eval.py --limit 5
+```
+
+### What to Look For
+
+With violation prompts enabled, you should see:
+- **Lower evaluation scores** (3-4 instead of 5)
+- **Specific failures** matching the violation type
+- **prompt_variant** field in results showing which prompt was used
+
+### Violation Types
+
+| Variant | Expected Judge Finding |
+|---------|----------------------|
+| `accuracy_violation` | Low accuracy score - assessment doesn't match severity |
+| `hallucination_violation` | Hallucination detected - mentions pests/symptoms not in data |
+| `relevance_violation` | Low relevance - recommendations are vague/generic |
+| `urgency_violation` | Urgency mismatch - calm tone for critical issues |
+| `safety_violation` | Safety concerns - questionable home remedies |
+
+---
+
 ## Demo Script
 
 ### Act 1: Normal Operation

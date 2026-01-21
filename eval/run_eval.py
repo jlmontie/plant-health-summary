@@ -169,6 +169,7 @@ class JudgeEvaluator:
             "eval_timestamp": datetime.now().isoformat(),
             "judge_model": self.model_name,
             "system_model": response.model,
+            "prompt_variant": getattr(response, "prompt_variant", "normal"),
         }
         
         if expected:
@@ -210,11 +211,13 @@ class JudgeEvaluator:
         Write evaluation results to BigQuery.
         
         In production, this persists the evaluation for dashboards and alerting.
+        The prompt_variant field enables analysis of how different prompts affect scores.
         """
         # Production: write to BigQuery
         # row = {
         #     "request_id": evaluation["_metadata"]["request_id"],
         #     "timestamp": evaluation["_metadata"]["eval_timestamp"],
+        #     "prompt_variant": evaluation["_metadata"]["prompt_variant"],
         #     "accuracy_score": evaluation["accuracy"]["score"],
         #     "relevance_score": evaluation["relevance"]["score"],
         #     "urgency_score": evaluation["urgency_calibration"]["score"],
@@ -226,7 +229,9 @@ class JudgeEvaluator:
         # self.bq_client.insert_rows_json(self.table_id, [row])
         
         # Demo: log
-        print(f"[BIGQUERY] Would write evaluation: request_id={evaluation['_metadata']['request_id']}")
+        metadata = evaluation["_metadata"]
+        variant = metadata.get("prompt_variant", "normal")
+        print(f"[BIGQUERY] Would write evaluation: request_id={metadata['request_id']} prompt_variant={variant}")
 
 
 # =============================================================================
@@ -258,6 +263,7 @@ def evaluate_single(payload: dict) -> dict:
         model=resp_data["model"],
         timestamp=resp_data["timestamp"],
         additional_context=resp_data.get("additional_context"),
+        prompt_variant=resp_data.get("prompt_variant", "normal"),
     )
     
     judge = JudgeEvaluator()
@@ -406,7 +412,9 @@ def run_batch_evaluation(
             if verbose:
                 score = evaluation.get("overall_score", "?")
                 hallucination = "YES" if evaluation["hallucination"]["detected"] else "no"
-                print(f"    Score: {score}/5 | Hallucination: {hallucination}")
+                variant = evaluation["_metadata"].get("prompt_variant", "normal")
+                variant_tag = f" [{variant}]" if variant != "normal" else ""
+                print(f"    Score: {score}/5 | Hallucination: {hallucination}{variant_tag}")
         
         except Exception as e:
             if verbose:

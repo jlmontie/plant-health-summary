@@ -37,6 +37,10 @@ class Config:
     # Pub/Sub settings
     pubsub_topic: str | None
     use_local_eval: bool  # If True, run eval locally instead of via Pub/Sub
+    
+    # Violation prompt settings (for LLM-as-judge demo)
+    # Rate at which to use violation prompts instead of normal prompt (0.0 to 1.0)
+    violation_rate: float
 
 
 def load_config() -> Config:
@@ -50,6 +54,7 @@ def load_config() -> Config:
         eval_sample_rate=float(os.getenv("EVAL_SAMPLE_RATE", "0.05")),
         pubsub_topic=os.getenv("PUBSUB_TOPIC"),
         use_local_eval=os.getenv("USE_LOCAL_EVAL", "true").lower() == "true",
+        violation_rate=float(os.getenv("VIOLATION_RATE", "0.2")),
     )
 
 

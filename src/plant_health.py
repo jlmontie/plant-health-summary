@@ -36,7 +36,22 @@ from src.config import CONFIG
 # =============================================================================
 
 PROJECT_ROOT = Path(__file__).parent.parent
-SYSTEM_PROMPT_PATH = PROJECT_ROOT / "prompts" / "plant_health_system.md"
+PROMPTS_DIR = PROJECT_ROOT / "prompts"
+VIOLATION_PROMPTS_DIR = PROMPTS_DIR / "violation_prompts"
+
+# Prompt variants for LLM-as-judge demo
+# Maps variant name to prompt file path
+PROMPT_VARIANTS = {
+    "normal": PROMPTS_DIR / "plant_health_system.md",
+    "accuracy_violation": VIOLATION_PROMPTS_DIR / "plant_health_system_accuracy_violation.md",
+    "hallucination_violation": VIOLATION_PROMPTS_DIR / "plant_health_system_hallucination_violation.md",
+    "relevance_violation": VIOLATION_PROMPTS_DIR / "plant_health_system_relevance_violation.md",
+    "urgency_violation": VIOLATION_PROMPTS_DIR / "plant_health_system_urgency_calibration_violation.md",
+    "safety_violation": VIOLATION_PROMPTS_DIR / "plant_health_system_safety_violation.md",
+}
+
+# List of violation variants (excludes "normal")
+VIOLATION_VARIANTS = [k for k in PROMPT_VARIANTS.keys() if k != "normal"]
 
 
 # =============================================================================
@@ -75,6 +90,7 @@ class AssessmentResponse:
     model: str
     timestamp: str
     additional_context: Optional[str] = None
+    prompt_variant: str = "normal"  # Tracks which prompt was used (for eval analysis)
 
 
 # =============================================================================
@@ -89,23 +105,42 @@ class PlantHealthService:
       - Runs on Cloud Run
       - Calls Vertex AI for generation
       - Publishes sample to Pub/Sub for async evaluation
+    
+    For demo purposes, supports "violation prompts" that subtly cause
+    specific evaluation failures to demonstrate LLM-as-judge efficacy.
     """
     
-    def __init__(self, model_name: str | None = None, sample_rate: float | None = None):
-        model_name = model_name or CONFIG.model_name
-        sample_rate = sample_rate if sample_rate is not None else CONFIG.eval_sample_rate
-        self.model_name = model_name
-        self.sample_rate = sample_rate
-        self.system_prompt = self._load_system_prompt()
+    def __init__(
+        self, 
+        model_name: str | None = None, 
+        sample_rate: float | None = None,
+        violation_rate: float | None = None,
+    ):
+        self.model_name = model_name or CONFIG.model_name
+        self.sample_rate = sample_rate if sample_rate is not None else CONFIG.eval_sample_rate
+        self.violation_rate = violation_rate if violation_rate is not None else CONFIG.violation_rate
         self._client = None
-        
-        # Pub/Sub publisher would be initialized here in production
-        # self.publisher = pubsub_v1.PublisherClient()
-        # self.topic_path = publisher.topic_path(project_id, "eval-queue")
+        self._prompt_cache: dict[str, str] = {}  # Cache loaded prompts
     
-    def _load_system_prompt(self) -> str:
-        """Load system prompt from file."""
-        return SYSTEM_PROMPT_PATH.read_text()
+    def _load_prompt(self, variant: str) -> str:
+        """Load and cache a prompt variant."""
+        if variant not in self._prompt_cache:
+            path = PROMPT_VARIANTS.get(variant, PROMPT_VARIANTS["normal"])
+            self._prompt_cache[variant] = path.read_text()
+        return self._prompt_cache[variant]
+    
+    def _select_prompt_variant(self) -> str:
+        """
+        Randomly select a prompt variant.
+        
+        With probability `violation_rate`, selects a random violation prompt.
+        Otherwise, uses the normal prompt.
+        """
+        if random.random() < self.violation_rate:
+            variant = random.choice(VIOLATION_VARIANTS)
+            print(f"[PROMPT] Using violation prompt: {variant}")
+            return variant
+        return "normal"
     
     @property
     def client(self):
@@ -144,13 +179,17 @@ class PlantHealthService:
         Returns:
             AssessmentResponse with the generated assessment
         """
+        # Select prompt variant (may use violation prompt for demo)
+        prompt_variant = self._select_prompt_variant()
+        system_prompt = self._load_prompt(prompt_variant)
+        
         # Build prompt
         user_prompt = self._build_prompt(request)
         
         # Generate assessment
         result = self.client.models.generate_content(
             model=self.model_name,
-            contents=[self.system_prompt, user_prompt],
+            contents=[system_prompt, user_prompt],
             config=genai.types.GenerateContentConfig(
                 temperature=0.3,
                 max_output_tokens=2000,
@@ -165,6 +204,7 @@ class PlantHealthService:
             model=self.model_name,
             timestamp=datetime.now().isoformat(),
             additional_context=request.additional_context,
+            prompt_variant=prompt_variant,
         )
         
         # Publish sample for async evaluation
