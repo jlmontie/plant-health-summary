@@ -197,6 +197,12 @@ resource "google_bigquery_table" "evaluations" {
       mode = "NULLABLE"
     },
     {
+      name = "prompt_variant"
+      type = "STRING"
+      mode = "NULLABLE"
+      description = "Which prompt variant was used (normal or violation type)"
+    },
+    {
       name = "evaluation_json"
       type = "JSON"
       mode = "NULLABLE"

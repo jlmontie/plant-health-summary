@@ -39,6 +39,7 @@ from datetime import datetime
 from typing import Optional
 
 from google import genai
+from google.cloud import bigquery
 
 # Import production service and config
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -101,9 +102,15 @@ class JudgeEvaluator:
         self.system_prompt, self.eval_template = load_judge_prompt()
         self._client = None
         
-        # BigQuery client would be initialized here in production
-        # self.bq_client = bigquery.Client()
-        # self.table_id = f"{project_id}.evals.plant_health_evals"
+        # BigQuery client - lazy initialized
+        self._bq_client = None
+        
+        # Table ID from config: {project}.{dataset}.{table}
+        if CONFIG.gcp_project_id:
+            dataset = CONFIG.gcp_project_id.replace("-", "_") + "_evals"
+            self.table_id = f"{CONFIG.gcp_project_id}.{dataset}.evaluations"
+        else:
+            self.table_id = None
     
     @property
     def client(self):
@@ -143,11 +150,59 @@ class JudgeEvaluator:
         
         result = self.client.models.generate_content(
             model=self.model_name,
-            contents=[self.system_prompt, eval_prompt],
+            contents=eval_prompt,
             config=genai.types.GenerateContentConfig(
+                system_instruction=self.system_prompt,
                 temperature=0.1,
                 max_output_tokens=2000,
                 response_mime_type="application/json",
+                response_schema={
+                    "type": "object",
+                    "properties": {
+                        "accuracy": {
+                            "type": "object",
+                            "properties": {
+                                "score": {"type": "integer"},
+                                "reasoning": {"type": "string"}
+                            },
+                            "required": ["score", "reasoning"]
+                        },
+                        "relevance": {
+                            "type": "object",
+                            "properties": {
+                                "score": {"type": "integer"},
+                                "reasoning": {"type": "string"}
+                            },
+                            "required": ["score", "reasoning"]
+                        },
+                        "urgency_calibration": {
+                            "type": "object",
+                            "properties": {
+                                "score": {"type": "integer"},
+                                "reasoning": {"type": "string"}
+                            },
+                            "required": ["score", "reasoning"]
+                        },
+                        "hallucination": {
+                            "type": "object",
+                            "properties": {
+                                "detected": {"type": "boolean"},
+                                "evidence": {"type": "string"}
+                            },
+                            "required": ["detected", "evidence"]
+                        },
+                        "safety": {
+                            "type": "object",
+                            "properties": {
+                                "passed": {"type": "boolean"},
+                                "concerns": {"type": "string"}
+                            },
+                            "required": ["passed", "concerns"]
+                        },
+                        "overall_score": {"type": "integer"}
+                    },
+                    "required": ["accuracy", "relevance", "urgency_calibration", "hallucination", "safety", "overall_score"]
+                },
             )
         )
 
@@ -163,13 +218,16 @@ class JudgeEvaluator:
             else:
                 raise ValueError(f"Could not parse judge response: {result.text}")
         
-        # Add metadata
+        # Add metadata (includes fields needed for BigQuery)
         evaluation["_metadata"] = {
             "request_id": response.request_id,
             "eval_timestamp": datetime.now().isoformat(),
             "judge_model": self.model_name,
             "system_model": response.model,
             "prompt_variant": getattr(response, "prompt_variant", "normal"),
+            # Include response data for BigQuery write
+            "plant_type": response.plant_type,
+            "assessment": response.assessment,
         }
         
         if expected:
@@ -206,32 +264,50 @@ class JudgeEvaluator:
         
         return prompt
     
+    @property
+    def bq_client(self):
+        """Lazy-load BigQuery client."""
+        if self._bq_client is None:
+            self._bq_client = bigquery.Client(project=CONFIG.gcp_project_id)
+        return self._bq_client
+    
     def write_to_bigquery(self, evaluation: dict) -> None:
         """
         Write evaluation results to BigQuery.
         
         In production, this persists the evaluation for dashboards and alerting.
-        The prompt_variant field enables analysis of how different prompts affect scores.
+        The prompt_variant field enables filtering by which prompt variant was used.
         """
-        # Production: write to BigQuery
-        # row = {
-        #     "request_id": evaluation["_metadata"]["request_id"],
-        #     "timestamp": evaluation["_metadata"]["eval_timestamp"],
-        #     "prompt_variant": evaluation["_metadata"]["prompt_variant"],
-        #     "accuracy_score": evaluation["accuracy"]["score"],
-        #     "relevance_score": evaluation["relevance"]["score"],
-        #     "urgency_score": evaluation["urgency_calibration"]["score"],
-        #     "overall_score": evaluation["overall_score"],
-        #     "hallucination_detected": evaluation["hallucination"]["detected"],
-        #     "safety_passed": evaluation["safety"]["passed"],
-        #     "full_evaluation": json.dumps(evaluation),
-        # }
-        # self.bq_client.insert_rows_json(self.table_id, [row])
-        
-        # Demo: log
         metadata = evaluation["_metadata"]
-        variant = metadata.get("prompt_variant", "normal")
-        print(f"[BIGQUERY] Would write evaluation: request_id={metadata['request_id']} prompt_variant={variant}")
+        
+        # Build row matching BigQuery schema
+        row = {
+            "request_id": metadata["request_id"],
+            "timestamp": metadata["eval_timestamp"],
+            "plant_type": metadata["plant_type"],
+            "accuracy_score": evaluation["accuracy"]["score"],
+            "relevance_score": evaluation["relevance"]["score"],
+            "urgency_score": evaluation["urgency_calibration"]["score"],
+            "overall_score": evaluation["overall_score"],
+            "hallucination_detected": evaluation["hallucination"]["detected"],
+            "safety_passed": evaluation["safety"]["passed"],
+            "model": metadata["system_model"],
+            "assessment": metadata["assessment"],
+            "prompt_variant": metadata.get("prompt_variant", "normal"),
+            "evaluation_json": json.dumps(evaluation),
+        }
+        
+        # Only write to BigQuery if configured (production)
+        if self.table_id and CONFIG.gcp_project_id:
+            errors = self.bq_client.insert_rows_json(self.table_id, [row])
+            if errors:
+                print(f"[BIGQUERY] Insert errors: {errors}")
+            else:
+                print(f"[BIGQUERY] Wrote evaluation: request_id={metadata['request_id']}")
+        else:
+            # Demo mode: just log
+            variant = metadata.get("prompt_variant", "normal")
+            print(f"[BIGQUERY] Would write evaluation: request_id={metadata['request_id']} prompt_variant={variant}")
 
 
 # =============================================================================
