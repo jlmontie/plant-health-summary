@@ -17,6 +17,7 @@ max_instances = 2
 # Evaluation sampling rate
 eval_sample_rate = 0.05
 
-# GitHub for Cloud Build
-github_owner = "your-user-name"
-github_repo = "your-repo-name"
+# GitHub for Cloud Build (2nd gen connection)
+# First create a connection in Console: Cloud Build > Repositories > Connect Repository
+github_connection = "github-connection"  # Name you gave the connection
+github_repo       = "your-repo-name"     # Repo name as it appears in the connection

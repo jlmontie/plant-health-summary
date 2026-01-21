@@ -4,7 +4,7 @@ Input Guardrails Module.
 Provides safety checks for user input before LLM processing:
 - Prompt injection detection
 - Topic boundary enforcement  
-- PII redaction
+- PII redaction (Presidio locally, Cloud DLP in production)
 
 All checks are designed to fail open with logging, so a guardrail
 failure doesn't break the application.
@@ -14,12 +14,9 @@ import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Protocol
 
 from google import genai
-from presidio_analyzer import AnalyzerEngine
-from presidio_anonymizer import AnonymizerEngine
-from presidio_anonymizer.entities import OperatorConfig
 
 from src.config import CONFIG
 
@@ -160,27 +157,34 @@ class InputClassifier:
 
 
 # =============================================================================
-# PII Redactor (Presidio-based)
+# PII Redactor Interface
 # =============================================================================
 
-class PIIRedactor:
+class PIIRedactor(Protocol):
+    """Protocol for PII redaction implementations."""
+    def redact(self, text: str) -> tuple[str, list[str]]: ...
+
+
+# =============================================================================
+# Presidio PII Redactor (Local Development)
+# =============================================================================
+
+class PresidioPIIRedactor:
     """
     PII detection and redaction using Microsoft Presidio.
     
-    Detects and redacts personally identifiable information before
-    the input reaches the LLM.
+    Used for local development. Memory-intensive (~700MB for spaCy model).
     """
     
-    # PII types to detect
     ENTITIES = [
         "EMAIL_ADDRESS",
         "PHONE_NUMBER",
-        "PERSON",           # Names
+        "PERSON",
         "CREDIT_CARD",
         "US_SSN",
         "US_BANK_NUMBER",
         "IP_ADDRESS",
-        "LOCATION",         # Addresses
+        "LOCATION",
     ]
     
     def __init__(self):
@@ -188,34 +192,28 @@ class PIIRedactor:
         self._anonymizer = None
     
     @property
-    def analyzer(self) -> AnalyzerEngine:
+    def analyzer(self):
         """Lazy-load the Presidio analyzer."""
         if self._analyzer is None:
+            from presidio_analyzer import AnalyzerEngine
             self._analyzer = AnalyzerEngine()
         return self._analyzer
     
     @property
-    def anonymizer(self) -> AnonymizerEngine:
+    def anonymizer(self):
         """Lazy-load the Presidio anonymizer."""
         if self._anonymizer is None:
+            from presidio_anonymizer import AnonymizerEngine
             self._anonymizer = AnonymizerEngine()
         return self._anonymizer
     
     def redact(self, text: str) -> tuple[str, list[str]]:
-        """
-        Detect and redact PII from text.
-        
-        Args:
-            text: Input text to scan
-            
-        Returns:
-            Tuple of (redacted_text, list of PII types found)
-        """
         if not text or not text.strip():
             return text, []
         
         try:
-            # Analyze for PII
+            from presidio_anonymizer.entities import OperatorConfig
+            
             results = self.analyzer.analyze(
                 text=text,
                 entities=self.ENTITIES,
@@ -225,42 +223,155 @@ class PIIRedactor:
             if not results:
                 return text, []
             
-            # Collect detected PII types
             pii_types = list(set(r.entity_type for r in results))
-            
-            # Redact PII using square brackets instead of angle brackets
-            # This avoids confusing LLMs that interpret <TAG> as special tokens
-            from presidio_anonymizer.entities import OperatorConfig
             
             anonymized = self.anonymizer.anonymize(
                 text=text,
                 analyzer_results=results,
                 operators={
-                    "DEFAULT": OperatorConfig(
-                        "replace",
-                        {"new_value": "[REDACTED]"}
-                    ),
-                    "EMAIL_ADDRESS": OperatorConfig(
-                        "replace", 
-                        {"new_value": "[EMAIL_REDACTED]"}
-                    ),
-                    "PHONE_NUMBER": OperatorConfig(
-                        "replace",
-                        {"new_value": "[PHONE_REDACTED]"}
-                    ),
-                    "PERSON": OperatorConfig(
-                        "replace",
-                        {"new_value": "[NAME_REDACTED]"}
-                    ),
+                    "DEFAULT": OperatorConfig("replace", {"new_value": "[REDACTED]"}),
+                    "EMAIL_ADDRESS": OperatorConfig("replace", {"new_value": "[EMAIL_REDACTED]"}),
+                    "PHONE_NUMBER": OperatorConfig("replace", {"new_value": "[PHONE_REDACTED]"}),
+                    "PERSON": OperatorConfig("replace", {"new_value": "[NAME_REDACTED]"}),
                 }
             )
             
-            logger.info(f"PII redacted: {pii_types}")
+            logger.info(f"PII redacted (Presidio): {pii_types}")
             return anonymized.text, pii_types
             
         except Exception as e:
-            logger.warning(f"PII redaction error: {e}. Returning original text.")
+            logger.warning(f"Presidio PII redaction error: {e}. Returning original text.")
             return text, []
+
+
+# =============================================================================
+# Cloud DLP PII Redactor (Production)
+# =============================================================================
+
+class CloudDLPRedactor:
+    """
+    PII detection and redaction using Google Cloud DLP API.
+    
+    Used in production (Cloud Run). No local memory overhead - API call.
+    Requires: roles/dlp.user IAM role on service account.
+    """
+    
+    # Map DLP info types to redaction labels
+    INFO_TYPES = [
+        "EMAIL_ADDRESS",
+        "PHONE_NUMBER",
+        "PERSON_NAME",
+        "CREDIT_CARD_NUMBER",
+        "US_SOCIAL_SECURITY_NUMBER",
+        "US_BANK_ROUTING_MICR",
+        "IP_ADDRESS",
+        "STREET_ADDRESS",
+    ]
+    
+    def __init__(self):
+        self._client = None
+    
+    @property
+    def client(self):
+        """Lazy-load the DLP client."""
+        if self._client is None:
+            from google.cloud import dlp_v2
+            self._client = dlp_v2.DlpServiceClient()
+        return self._client
+    
+    def redact(self, text: str) -> tuple[str, list[str]]:
+        if not text or not text.strip():
+            return text, []
+        
+        try:
+            from google.cloud import dlp_v2
+            
+            # Build the inspect config
+            inspect_config = dlp_v2.InspectConfig(
+                info_types=[dlp_v2.InfoType(name=t) for t in self.INFO_TYPES],
+                min_likelihood=dlp_v2.Likelihood.LIKELIHOOD_UNSPECIFIED,
+            )
+            
+            # Build the deidentify config (replace with type label)
+            deidentify_config = dlp_v2.DeidentifyConfig(
+                info_type_transformations=dlp_v2.InfoTypeTransformations(
+                    transformations=[
+                        dlp_v2.InfoTypeTransformations.InfoTypeTransformation(
+                            primitive_transformation=dlp_v2.PrimitiveTransformation(
+                                replace_with_info_type_config=dlp_v2.ReplaceWithInfoTypeConfig()
+                            )
+                        )
+                    ]
+                )
+            )
+            
+            # Build the request
+            item = dlp_v2.ContentItem(value=text)
+            parent = f"projects/{CONFIG.gcp_project_id}/locations/{CONFIG.gcp_location}"
+            
+            response = self.client.deidentify_content(
+                request={
+                    "parent": parent,
+                    "inspect_config": inspect_config,
+                    "deidentify_config": deidentify_config,
+                    "item": item,
+                }
+            )
+            
+            # Extract found info types from the overview
+            pii_types = []
+            if response.overview and response.overview.transformation_summaries:
+                for summary in response.overview.transformation_summaries:
+                    if summary.info_type:
+                        pii_types.append(summary.info_type.name)
+            
+            redacted_text = response.item.value
+            
+            # Convert DLP format [INFO_TYPE] to our format [TYPE_REDACTED]
+            for info_type in self.INFO_TYPES:
+                redacted_text = redacted_text.replace(
+                    f"[{info_type}]",
+                    f"[{info_type.replace('_', ' ').title().replace(' ', '_')}_REDACTED]"
+                )
+            
+            if pii_types:
+                logger.info(f"PII redacted (Cloud DLP): {pii_types}")
+            
+            return redacted_text, pii_types
+            
+        except Exception as e:
+            logger.warning(f"Cloud DLP error: {e}. Returning original text.")
+            return text, []
+
+
+# =============================================================================
+# No-op PII Redactor (Skip PII check)
+# =============================================================================
+
+class NoOpPIIRedactor:
+    """No-op redactor - passes text through unchanged."""
+    
+    def redact(self, text: str) -> tuple[str, list[str]]:
+        return text, []
+
+
+def create_pii_redactor() -> PIIRedactor:
+    """
+    Factory function to create the appropriate PII redactor.
+    
+    Uses Cloud DLP in production (USE_VERTEX_AI=true), Presidio locally.
+    Set USE_PII_REDACTION=false to disable entirely.
+    """
+    if not CONFIG.use_pii_redaction:
+        logger.info("PII redaction disabled")
+        return NoOpPIIRedactor()
+    
+    if CONFIG.use_cloud_dlp:
+        logger.info("Using Cloud DLP for PII redaction")
+        return CloudDLPRedactor()
+    else:
+        logger.info("Using Presidio for PII redaction")
+        return PresidioPIIRedactor()
 
 # =============================================================================
 # Unified Guardrails Interface
@@ -272,6 +383,11 @@ class InputGuardrails:
     
     Runs PII redaction first (always), then classification on the 
     redacted text. This ensures the classifier never sees raw PII.
+    
+    PII redaction uses:
+    - Cloud DLP in production (USE_CLOUD_DLP=true)
+    - Presidio locally (USE_CLOUD_DLP=false, default)
+    - Disabled entirely with USE_PII_REDACTION=false
     
     Usage:
         guardrails = InputGuardrails()
@@ -286,7 +402,7 @@ class InputGuardrails:
     
     def __init__(self):
         self.classifier = InputClassifier()
-        self.pii_redactor = PIIRedactor()
+        self.pii_redactor = create_pii_redactor()
     
     def check(self, user_input: str) -> GuardrailResult:
         """

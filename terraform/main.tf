@@ -31,6 +31,7 @@ resource "google_project_service" "required_apis" {
     "bigquery.googleapis.com",
     "secretmanager.googleapis.com",
     "artifactregistry.googleapis.com",
+    "dlp.googleapis.com",  # Cloud DLP for PII redaction
   ])
   
   project = var.project_id
@@ -260,6 +261,16 @@ resource "google_cloud_run_v2_service" "app" {
         value = google_pubsub_topic.eval_queue.id
       }
       
+      env {
+        name  = "USE_CLOUD_DLP"
+        value = "true"  # Use Cloud DLP instead of Presidio in production
+      }
+      
+      env {
+        name  = "USE_PII_REDACTION"
+        value = "true"
+      }
+      
       # Only include API key env var when not using Vertex AI
       dynamic "env" {
         for_each = var.use_vertex_ai ? [] : [1]
@@ -274,12 +285,12 @@ resource "google_cloud_run_v2_service" "app" {
         }
       }
       
-      resources {
-        limits = {
-          cpu    = "1"
-          memory = "512Mi"
-        }
-      }
+              resources {
+                limits = {
+                  cpu    = "1"
+                  memory = "512Mi"  # Cloud DLP used instead of Presidio - minimal memory
+                }
+              }
     }
   }
   

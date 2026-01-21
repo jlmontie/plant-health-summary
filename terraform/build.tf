@@ -1,17 +1,18 @@
 # =============================================================================
-# Cloud Build Trigger (GitOps)
+# Cloud Build Trigger (GitOps) - 2nd Gen GitHub Connection
 # =============================================================================
 
-# Connect to GitHub repository
-# Note: First-time setup requires manual OAuth in Cloud Console
+# Note: The GitHub connection must be created manually first via:
+# https://console.cloud.google.com/cloud-build/repositories
+# This creates: projects/PROJECT/locations/REGION/connections/CONNECTION_NAME/repositories/REPO
+
 resource "google_cloudbuild_trigger" "app" {
   name     = "${var.app_name}-deploy"
   location = var.region
   
-  # Trigger on push to main branch
-  github {
-    owner = var.github_owner
-    name  = var.github_repo
+  # 2nd gen GitHub connection format
+  repository_event_config {
+    repository = "projects/${var.project_id}/locations/${var.region}/connections/${var.github_connection}/repositories/${var.github_repo}"
     push {
       branch = "^main$"
     }

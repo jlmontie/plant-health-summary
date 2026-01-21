@@ -70,15 +70,16 @@ variable "eval_sample_rate" {
 }
 
 # =============================================================================
-# GitHub Settings
+# GitHub Settings (for Cloud Build 2nd Gen Connection)
 # =============================================================================
 
-variable "github_owner" {
-  description = "GitHub username or organization"
+variable "github_connection" {
+  description = "Name of the Cloud Build GitHub connection (created manually in Console)"
   type        = string
+  default     = "github-connection"
 }
 
 variable "github_repo" {
-  description = "GitHub repository name"
+  description = "GitHub repository name (as it appears in the connection)"
   type        = string
 }

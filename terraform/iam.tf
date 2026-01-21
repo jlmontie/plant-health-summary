@@ -45,6 +45,13 @@ resource "google_pubsub_topic_iam_member" "app_publish" {
   member = "serviceAccount:${google_service_account.app.email}"
 }
 
+# Cloud DLP for PII redaction
+resource "google_project_iam_member" "app_dlp_user" {
+  project = var.project_id
+  role    = "roles/dlp.user"
+  member  = "serviceAccount:${google_service_account.app.email}"
+}
+
 # Read secrets (only when not using Vertex AI)
 resource "google_secret_manager_secret_iam_member" "app_read_api_key" {
   count     = var.use_vertex_ai ? 0 : 1

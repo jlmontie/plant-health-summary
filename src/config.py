@@ -41,6 +41,10 @@ class Config:
     # Violation prompt settings (for LLM-as-judge demo)
     # Rate at which to use violation prompts instead of normal prompt (0.0 to 1.0)
     violation_rate: float
+    
+    # PII redaction settings
+    use_pii_redaction: bool  # If False, skip PII checks entirely
+    use_cloud_dlp: bool      # If True, use Cloud DLP; if False, use Presidio
 
 
 def load_config() -> Config:
@@ -55,6 +59,8 @@ def load_config() -> Config:
         pubsub_topic=os.getenv("PUBSUB_TOPIC"),
         use_local_eval=os.getenv("USE_LOCAL_EVAL", "true").lower() == "true",
         violation_rate=float(os.getenv("VIOLATION_RATE", "0.2")),
+        use_pii_redaction=os.getenv("USE_PII_REDACTION", "true").lower() == "true",
+        use_cloud_dlp=os.getenv("USE_CLOUD_DLP", "false").lower() == "true",
     )
 
 
