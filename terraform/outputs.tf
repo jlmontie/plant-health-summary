@@ -32,6 +32,16 @@ output "evaluator_service_account" {
   value       = google_service_account.evaluator.email
 }
 
+output "evaluator_function_name" {
+  description = "Name of the evaluator Cloud Function"
+  value       = google_cloudfunctions2_function.evaluator.name
+}
+
+output "function_source_bucket" {
+  description = "GCS bucket for Cloud Function source code"
+  value       = google_storage_bucket.function_source.name
+}
+
 # =============================================================================
 # Deployment Instructions
 # =============================================================================

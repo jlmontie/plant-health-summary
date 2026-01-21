@@ -92,3 +92,33 @@ resource "google_pubsub_topic_iam_member" "evaluator_dead_letter" {
   role   = "roles/pubsub.publisher"
   member = "serviceAccount:${google_service_account.evaluator.email}"
 }
+
+# =============================================================================
+# Eventarc / Pub/Sub Trigger Permissions
+# =============================================================================
+
+# Get the project's Pub/Sub service agent
+data "google_project" "project" {
+  project_id = var.project_id
+}
+
+# Allow Pub/Sub to create authentication tokens for invoking the function
+resource "google_project_iam_member" "pubsub_token_creator" {
+  project = var.project_id
+  role    = "roles/iam.serviceAccountTokenCreator"
+  member  = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
+}
+
+# Allow the evaluator service account to receive Eventarc events
+resource "google_project_iam_member" "evaluator_eventarc_receiver" {
+  project = var.project_id
+  role    = "roles/eventarc.eventReceiver"
+  member  = "serviceAccount:${google_service_account.evaluator.email}"
+}
+
+# Allow Cloud Functions to use the evaluator service account
+resource "google_service_account_iam_member" "evaluator_function_user" {
+  service_account_id = google_service_account.evaluator.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${var.project_id}@appspot.gserviceaccount.com"
+}

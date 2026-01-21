@@ -1,7 +1,12 @@
 # cloudbuild.yaml
 steps:
+  # ==========================================================================
+  # Build and Deploy Main Application (Cloud Run)
+  # ==========================================================================
+  
   # Build the container image
   - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-app'
     args:
       - 'build'
       - '-t'
@@ -12,13 +17,16 @@ steps:
 
   # Push to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-app'
     args:
       - 'push'
       - '--all-tags'
       - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/app'
+    waitFor: ['build-app']
 
   # Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-app'
     entrypoint: gcloud
     args:
       - 'run'
@@ -30,11 +38,72 @@ steps:
       - '${_REGION}'
       - '--platform'
       - 'managed'
+    waitFor: ['push-app']
+
+  # ==========================================================================
+  # Build and Deploy Evaluator Function (Cloud Functions)
+  # ==========================================================================
+  
+  # Package function source code
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'package-function'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        # Create a clean directory for function source
+        mkdir -p /workspace/function-package
+        
+        # Copy required files (eval module, src module, prompts, config)
+        cp -r eval /workspace/function-package/
+        cp -r src /workspace/function-package/
+        cp -r prompts /workspace/function-package/
+        cp -r data /workspace/function-package/
+        cp requirements.txt /workspace/function-package/
+        
+        # Create the zip file
+        cd /workspace/function-package
+        zip -r /workspace/function-source.zip .
+        
+        echo "Function source packaged successfully"
+    waitFor: ['-']  # Start immediately, parallel with app build
+
+  # Upload function source to GCS
+  - name: 'gcr.io/cloud-builders/gsutil'
+    id: 'upload-function'
+    args:
+      - 'cp'
+      - '/workspace/function-source.zip'
+      - 'gs://${PROJECT_ID}-function-source/function-source-${SHORT_SHA}.zip'
+    waitFor: ['package-function']
+
+  # Deploy Cloud Function
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-function'
+    entrypoint: gcloud
+    args:
+      - 'functions'
+      - 'deploy'
+      - '${_FUNCTION_NAME}'
+      - '--gen2'
+      - '--region=${_REGION}'
+      - '--runtime=python312'
+      - '--source=gs://${PROJECT_ID}-function-source/function-source-${SHORT_SHA}.zip'
+      - '--entry-point=evaluate_pubsub'
+      - '--trigger-topic=${_PUBSUB_TOPIC}'
+      - '--service-account=${_FUNCTION_SA}'
+      - '--memory=512Mi'
+      - '--timeout=120s'
+      - '--set-env-vars=USE_VERTEX_AI=true,GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GCP_LOCATION=${_REGION},MODEL_NAME=gemini-2.5-flash'
+    waitFor: ['upload-function']
 
 substitutions:
   _REGION: us-central1
-  _REPO_NAME: plant-health-summary
+  _REPO_NAME: plant-health
   _SERVICE_NAME: plant-health-app
+  _FUNCTION_NAME: plant-health-evaluator
+  _PUBSUB_TOPIC: plant-health-eval-queue
+  _FUNCTION_SA: plant-health-eval-sa@${PROJECT_ID}.iam.gserviceaccount.com
 
 options:
   logging: CLOUD_LOGGING_ONLY
