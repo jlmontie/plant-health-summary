@@ -52,6 +52,9 @@ class Config:
     # Arize Phoenix tracing (for remote monitoring)
     arize_api_key: str | None
     arize_space_id: str | None
+    
+    # Connected Google Sheet URL (for viewing BigQuery evaluation results)
+    connected_sheet_url: str | None
 
 
 def load_config() -> Config:
