@@ -17,7 +17,7 @@ A production-grade demonstration of **AI Safety** patterns in an LLM application
 ```mermaid
 flowchart TB
     subgraph Input["Input Guardrails"]
-        PII["PII Redactor<br/><i>Presidio</i>"]
+        PII["PII Redactor<br/><i>Presidio | Google DLP</i>"]
         CLASS["LLM Classifier<br/><i>Prompt Injection / Topic Check</i>"]
         PII --> CLASS
     end
