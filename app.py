@@ -9,8 +9,11 @@ Run with: chainlit run app.py
 
 import json
 from pathlib import Path
+import uuid
 
 import chainlit as cl
+from opentelemetry import trace
+from openinference.semconv.trace import SpanAttributes
 
 # Initialize observability BEFORE importing modules that create LLM clients
 from src.observability import init_tracing
@@ -197,66 +200,77 @@ async def on_message(message: cl.Message):
             content="Please select a plant first using the buttons above."
         ).send()
         return
-    
-    # Run guardrails on user message
-    guardrail_result = guardrails.check(message.content)
-    
-    # Handle blocked input
-    if guardrail_result.blocked:
-        block_message = _format_block_message(guardrail_result)
-        await cl.Message(content=block_message).send()
-        return
-    
-    # Log PII detection (visible in server logs)
-    if guardrail_result.pii_detected:
-        print(f"[GUARDRAILS] PII redacted: {guardrail_result.pii_types}")
-    
-    # Build the assessment request
-    plant_input = plant_data["input"]
-    metrics_data = plant_input["metrics"]
-    
-    # Combine user message with any existing additional context
-    additional_context = plant_input.get("additional_context", "")
-    if guardrail_result.processed_input.strip():
-        user_note = guardrail_result.processed_input.strip()
-        if additional_context:
-            additional_context = f"{additional_context}. User note: {user_note}"
-        else:
-            additional_context = f"User note: {user_note}"
-    
-    request = AssessmentRequest(
-        request_id=f"demo-{plant_data['id']}",
-        plant_type=plant_input["plant_type"],
-        metrics=SensorMetrics(
-            soil_moisture=metrics_data["soil_moisture"]["value"],
-            soil_moisture_target=metrics_data["soil_moisture"]["target"],
-            light=metrics_data["light"]["value"],
-            light_target=metrics_data["light"]["target"],
-            temperature=metrics_data["temperature"]["value"],
-            temperature_target=metrics_data["temperature"]["target"],
-            humidity=metrics_data["humidity"]["value"],
-            humidity_target=metrics_data["humidity"]["target"],
-        ),
-        additional_context=additional_context if additional_context else None,
-    )
-    
-    # Show thinking indicator
-    msg = cl.Message(content="Analyzing sensor data...")
-    await msg.send()
-    
-    # Generate assessment with error handling
-    try:
-        response = service.assess(request)
-        msg.content = response.assessment
-    except Exception as e:
-        print(f"[ERROR] Assessment failed: {e}")
-        msg.content = (
-            "I encountered an issue while generating the assessment. "
-            "Please try again in a moment.\n\n"
-            f"*Error: {type(e).__name__}*"
+
+    request_id = f"demo-{plant_data['id']}-{uuid.uuid4().hex[:8]}"
+
+    tracer = trace.get_tracer(__name__)
+
+    with tracer.start_as_current_span("PlantHealthRequest") as root_span:
+        root_span.set_attribute(SpanAttributes.OPENINFERENCE_SPAN_KIND, "CHAIN")
+        
+        # Run guardrails on user message
+        with tracer.start_as_current_span("Guardrail") as span:
+            span.set_attribute(SpanAttributes.OPENINFERENCE_SPAN_KIND, "GUARDRAIL")
+            guardrail_result = guardrails.check(message.content)
+        
+        # Handle blocked input
+        if guardrail_result.blocked:
+            block_message = _format_block_message(guardrail_result)
+            await cl.Message(content=block_message).send()
+            return
+        
+        # Log PII detection (visible in server logs)
+        if guardrail_result.pii_detected:
+            print(f"[GUARDRAILS] PII redacted: {guardrail_result.pii_types}")
+        
+        # Build the assessment request
+        plant_input = plant_data["input"]
+        metrics_data = plant_input["metrics"]
+        
+        # Combine user message with any existing additional context
+        additional_context = plant_input.get("additional_context", "")
+        if guardrail_result.processed_input.strip():
+            user_note = guardrail_result.processed_input.strip()
+            if additional_context:
+                additional_context = f"{additional_context}. User note: {user_note}"
+            else:
+                additional_context = f"User note: {user_note}"
+        
+        request = AssessmentRequest(
+            request_id=request_id,
+            plant_type=plant_input["plant_type"],
+            metrics=SensorMetrics(
+                soil_moisture=metrics_data["soil_moisture"]["value"],
+                soil_moisture_target=metrics_data["soil_moisture"]["target"],
+                light=metrics_data["light"]["value"],
+                light_target=metrics_data["light"]["target"],
+                temperature=metrics_data["temperature"]["value"],
+                temperature_target=metrics_data["temperature"]["target"],
+                humidity=metrics_data["humidity"]["value"],
+                humidity_target=metrics_data["humidity"]["target"],
+            ),
+            additional_context=additional_context if additional_context else None,
         )
-    
-    await msg.update()
+        
+        # Show thinking indicator
+        msg = cl.Message(content="Analyzing sensor data...")
+        await msg.send()
+        
+        # Generate assessment with error handling
+        try:
+            with tracer.start_as_current_span("Assess") as span:
+                span.set_attribute(SpanAttributes.OPENINFERENCE_SPAN_KIND, "LLM")
+                response = service.assess(request)
+            msg.content = response.assessment
+        except Exception as e:
+            print(f"[ERROR] Assessment failed: {e}")
+            msg.content = (
+                "I encountered an issue while generating the assessment. "
+                "Please try again in a moment.\n\n"
+                f"*Error: {type(e).__name__}*"
+            )
+        
+        await msg.update()
 
 
 # =============================================================================

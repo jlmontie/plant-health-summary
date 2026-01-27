@@ -40,6 +40,9 @@ from typing import Optional
 
 from google import genai
 from google.cloud import bigquery
+from opentelemetry import trace
+from openinference.semconv.trace import SpanAttributes
+from openinference.instrumentation import using_attributes
 
 # Import production service and config
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -148,64 +151,68 @@ class JudgeEvaluator:
             Evaluation dict with scores and analysis
         """
         eval_prompt = self._build_eval_prompt(response)
-        
-        result = self.client.models.generate_content(
-            model=self.model_name,
-            contents=eval_prompt,
-            config=genai.types.GenerateContentConfig(
-                system_instruction=self.system_prompt,
-                temperature=0.1,
-                max_output_tokens=2000,
-                response_mime_type="application/json",
-                response_schema={
-                    "type": "object",
-                    "properties": {
-                        "accuracy": {
-                            "type": "object",
-                            "properties": {
-                                "score": {"type": "integer"},
-                                "reasoning": {"type": "string"}
+
+        tracer = trace.get_tracer(__name__)
+
+        with tracer.start_as_current_span("Evaluator") as span:
+            span.set_attribute(SpanAttributes.OPENINFERENCE_SPAN_KIND, "EVALUATOR")
+            result = self.client.models.generate_content(
+                model=self.model_name,
+                contents=eval_prompt,
+                config=genai.types.GenerateContentConfig(
+                    system_instruction=self.system_prompt,
+                    temperature=0.1,
+                    max_output_tokens=2000,
+                    response_mime_type="application/json",
+                    response_schema={
+                        "type": "object",
+                        "properties": {
+                            "accuracy": {
+                                "type": "object",
+                                "properties": {
+                                    "score": {"type": "integer"},
+                                    "reasoning": {"type": "string"}
+                                },
+                                "required": ["score", "reasoning"]
                             },
-                            "required": ["score", "reasoning"]
-                        },
-                        "relevance": {
-                            "type": "object",
-                            "properties": {
-                                "score": {"type": "integer"},
-                                "reasoning": {"type": "string"}
+                            "relevance": {
+                                "type": "object",
+                                "properties": {
+                                    "score": {"type": "integer"},
+                                    "reasoning": {"type": "string"}
+                                },
+                                "required": ["score", "reasoning"]
                             },
-                            "required": ["score", "reasoning"]
-                        },
-                        "urgency_calibration": {
-                            "type": "object",
-                            "properties": {
-                                "score": {"type": "integer"},
-                                "reasoning": {"type": "string"}
+                            "urgency_calibration": {
+                                "type": "object",
+                                "properties": {
+                                    "score": {"type": "integer"},
+                                    "reasoning": {"type": "string"}
+                                },
+                                "required": ["score", "reasoning"]
                             },
-                            "required": ["score", "reasoning"]
-                        },
-                        "hallucination": {
-                            "type": "object",
-                            "properties": {
-                                "detected": {"type": "boolean"},
-                                "evidence": {"type": "string"}
+                            "hallucination": {
+                                "type": "object",
+                                "properties": {
+                                    "detected": {"type": "boolean"},
+                                    "evidence": {"type": "string"}
+                                },
+                                "required": ["detected", "evidence"]
                             },
-                            "required": ["detected", "evidence"]
-                        },
-                        "safety": {
-                            "type": "object",
-                            "properties": {
-                                "passed": {"type": "boolean"},
-                                "concerns": {"type": "string"}
+                            "safety": {
+                                "type": "object",
+                                "properties": {
+                                    "passed": {"type": "boolean"},
+                                    "concerns": {"type": "string"}
+                                },
+                                "required": ["passed", "concerns"]
                             },
-                            "required": ["passed", "concerns"]
+                            "overall_score": {"type": "integer"}
                         },
-                        "overall_score": {"type": "integer"}
+                        "required": ["accuracy", "relevance", "urgency_calibration", "hallucination", "safety", "overall_score"]
                     },
-                    "required": ["accuracy", "relevance", "urgency_calibration", "hallucination", "safety", "overall_score"]
-                },
+                )
             )
-        )
 
         # Parse JSON response
         try:
