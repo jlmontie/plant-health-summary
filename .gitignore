@@ -68,4 +68,4 @@ terraform/.terraform/
 terraform/*.tfstate
 terraform/*.tfstate.*
 terraform/.terraform.lock.hcl
-terraform/*.tfvars
+terraform/*.tfvarsdocs/implementation-plan.md
